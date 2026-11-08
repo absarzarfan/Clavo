@@ -50,17 +50,38 @@ class ObjectDetectorHelper(
 
     // For this example this needs to be a var so it can be reset on changes. If the ObjectDetector
     // will not change, a lazy val would be preferable.
+    @Volatile
     private var objectDetector: ObjectDetector? = null
     private var imageRotation = 0
     private lateinit var imageProcessingOptions: ImageProcessingOptions
+
+    // Guards every access to objectDetector so close() can never run while a frame is being
+    // submitted to the native graph (that race caused SIGSEGV in nativeCreateProto).
+    private val detectorLock = Any()
+
+    // Once released, the helper never creates or uses a detector again.
+    @Volatile
+    private var released = false
 
     init {
         setupObjectDetector()
     }
 
     fun clearObjectDetector() {
-        objectDetector?.close()
-        objectDetector = null
+        synchronized(detectorLock) {
+            objectDetector?.close()
+            objectDetector = null
+        }
+    }
+
+    // Permanently shuts the helper down. Call after the frame producer has been stopped.
+    fun release() {
+        synchronized(detectorLock) {
+            released = true
+            objectDetector?.close()
+            objectDetector = null
+        }
+        objectDetectorListener = null
     }
 
     // Initialize the object detector using current settings on the
@@ -69,6 +90,7 @@ class ObjectDetectorHelper(
     // the GPU delegate needs to be used on the thread that initialized the detector
 
     fun setupObjectDetector() {
+        if (released) return
         // Set general detection options, including number of used threads
         if (modelPath.isEmpty()) {
             objectDetectorListener?.onError("Model path is empty.")
@@ -127,7 +149,15 @@ class ObjectDetectorHelper(
             }
 
             val options = optionsBuilder.build()
-            objectDetector = ObjectDetector.createFromOptions(context, options)
+            val newDetector = ObjectDetector.createFromOptions(context, options)
+            synchronized(detectorLock) {
+                if (released) {
+                    newDetector.close()
+                } else {
+                    objectDetector?.close()
+                    objectDetector = newDetector
+                }
+            }
         } catch (e: IllegalStateException) {
             objectDetectorListener?.onError(
                 "Object detector failed to initialize. See error logs for details"
@@ -176,7 +206,6 @@ class ObjectDetectorHelper(
         val startTime = SystemClock.uptimeMillis()
 
         var didErrorOccurred = false
-
         // Load frames from the video and run the object detection model.
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(context, videoUri)
@@ -248,23 +277,32 @@ class ObjectDetectorHelper(
     fun detectLivestreamFrame(imageProxy: ImageProxy) {
 
         if (runningMode != RunningMode.LIVE_STREAM) {
+            imageProxy.close()
             throw IllegalArgumentException(
                 "Attempting to call detectLivestreamFrame" + " while not using RunningMode.LIVE_STREAM"
             )
         }
 
+        // Drop the frame if the detector is closed/released (e.g. while the fragment is stopping)
+        if (released || objectDetector == null) {
+            imageProxy.close()
+            return
+        }
+
         val frameTime = SystemClock.uptimeMillis()
+
+        // Read everything needed from the proxy before it is closed
+        val frameRotation = imageProxy.imageInfo.rotationDegrees
 
         // Copy out RGB bits from the frame to a bitmap buffer
         val bitmapBuffer = Bitmap.createBitmap(
             imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888
         )
-        imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer) }
-        imageProxy.close()
+        imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(it.planes[0].buffer) }
 
         // If the input image rotation is change, stop all detector
-        if (imageProxy.imageInfo.rotationDegrees != imageRotation) {
-            imageRotation = imageProxy.imageInfo.rotationDegrees
+        if (frameRotation != imageRotation) {
+            imageRotation = frameRotation
             clearObjectDetector()
             setupObjectDetector()
             return
@@ -276,7 +314,7 @@ class ObjectDetectorHelper(
         detectAsync(mpImage, frameTime)
     }
 
-    // Method baru untuk WebView/ESP32
+    // Runs detection on a Bitmap frame (used by WebcamFragment for USB/UVC webcam frames)
     fun detectFromBitmap(bitmap: Bitmap, rotationDegrees: Int = 0) {
         if (runningMode != RunningMode.LIVE_STREAM) return
 
@@ -307,7 +345,17 @@ class ObjectDetectorHelper(
     fun detectAsync(mpImage: MPImage, frameTime: Long) {
         // As we're using running mode LIVE_STREAM, the detection result will be returned in
         // returnLivestreamResult function
-        objectDetector?.detectAsync(mpImage, imageProcessingOptions, frameTime)
+        // Hold the lock so close() cannot run while the frame is handed to the native graph.
+        synchronized(detectorLock) {
+            if (released) return
+            val detector = objectDetector ?: return
+            if (!::imageProcessingOptions.isInitialized) return
+            try {
+                detector.detectAsync(mpImage, imageProcessingOptions, frameTime)
+            } catch (e: RuntimeException) {
+                Log.e(TAG, "detectAsync failed: " + e.message)
+            }
+        }
     }
 
     // Return the detection result to this ObjectDetectorHelper's caller

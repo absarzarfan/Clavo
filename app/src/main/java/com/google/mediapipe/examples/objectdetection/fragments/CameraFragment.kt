@@ -83,32 +83,68 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                 requireActivity(),
                 R.id.fragment_container
             ).navigate(CameraFragmentDirections.actionCameraToPermissions())
+        } else if (this::objectDetectorHelper.isInitialized &&
+            this::backgroundExecutor.isInitialized && !backgroundExecutor.isShutdown
+        ) {
+            // Re-create the detector and re-attach the analyzer after onPause released them.
+            val analyzer = imageAnalyzer
+            if (analyzer != null) {
+                backgroundExecutor.execute {
+                    objectDetectorHelper.setupObjectDetector()
+                    analyzer.setAnalyzer(
+                        backgroundExecutor,
+                        objectDetectorHelper::detectLivestreamFrame
+                    )
+                }
+            }
         }
     }
 
     // Pauses the detection and releases detector resources to save power.
     override fun onPause() {
         super.onPause()
+        // 1) Stop the frame producer first so no frame reaches a closed detector.
+        imageAnalyzer?.clearAnalyzer()
+
         if (this::objectDetectorHelper.isInitialized) {
             viewModel.setDelegate(objectDetectorHelper.currentDelegate)
             viewModel.setThreshold(objectDetectorHelper.threshold)
             viewModel.setMaxResults(objectDetectorHelper.maxResults)
 
-            // Panggil clearObjectDetector() langsung, itu sudah thread-safe.
-            objectDetectorHelper.clearObjectDetector()
+            // 2) Close the detector on the executor, after any in-flight analyzer task finishes.
+            if (this::backgroundExecutor.isInitialized && !backgroundExecutor.isShutdown) {
+                backgroundExecutor.execute { objectDetectorHelper.clearObjectDetector() }
+            } else {
+                objectDetectorHelper.clearObjectDetector()
+            }
         }
     }
 
     // Cleans up the view binding and shuts down the background executor.
     override fun onDestroyView() {
         _fragmentCameraBinding = null
-        super.onDestroyView()
 
-        backgroundExecutor.shutdown()
-        backgroundExecutor.awaitTermination(
-            Long.MAX_VALUE,
-            TimeUnit.NANOSECONDS
-        )
+        // Order matters: stop frames -> stop executor -> close detector.
+        imageAnalyzer?.clearAnalyzer()
+        cameraProvider?.unbindAll()
+        imageAnalyzer = null
+        preview = null
+        camera = null
+
+        if (this::backgroundExecutor.isInitialized) {
+            backgroundExecutor.shutdown()
+            try {
+                backgroundExecutor.awaitTermination(2, TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
+
+        if (this::objectDetectorHelper.isInitialized) {
+            objectDetectorHelper.release()
+        }
+
+        super.onDestroyView()
     }
 
     // Inflates the fragment's view and initializes the view binding.

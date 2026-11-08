@@ -30,13 +30,6 @@
             app:destination="@id/camera_fragment"
             app:popUpTo="@id/permissions_fragment"
             app:popUpToInclusive="true" />
-
-        <!-- New Action to StreamFragment -->
-        <action
-            android:id="@+id/action_permissions_to_stream"
-            app:destination="@id/stream_fragment"
-            app:popUpTo="@id/permissions_fragment"
-            app:popUpToInclusive="true" />
     </fragment>
 
 <!--     Camera Fragment -->
@@ -58,13 +51,7 @@
 <!--        android:name="com.google.mediapipe.examples.objectdetection.fragments.GalleryFragment"-->
 <!--        android:label="GalleryFragment" />-->
 
-    <!-- Stream Fragment (WebView) -->
-    <fragment
-        android:id="@+id/stream_fragment"
-        android:name="com.google.mediapipe.examples.objectdetection.fragments.StreamFragment"
-        android:label="StreamFragment" />
-
-    <!-- Stream Fragment (Webcam) -->
+    <!-- Webcam Fragment (USB/UVC) -->
     <fragment
         android:id="@+id/webcam_fragment"
         android:name="com.google.mediapipe.examples.objectdetection.fragments.WebcamFragment"

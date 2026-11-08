@@ -8,8 +8,7 @@ Clavo is an Android application designed for real-time object detection, with a 
 *   **Real-Time Inference:** Performs object detection on-device for immediate results.
 *   **Multiple Input Modes:**
     *   **Live Camera:** Uses the device's built-in camera for live detection.
-    *   **Clavo Hardware (ESP32):** Connects to a live MJPEG stream from custom hardware for remote monitoring.
-    *   **External Webcam:** Supports USB webcams for flexible camera placement.
+    *   **External Webcam (USB):** Supports USB (UVC) webcams for flexible camera placement.
 *   **Visual Feedback:** Overlays bounding boxes and confidence scores on the detected objects.
 
 ## Technology Stack
@@ -23,7 +22,6 @@ Clavo is an Android application designed for real-time object detection, with a 
     *   Navigation Component for in-app navigation.
     *   ViewModel for state management.
 *   **Libraries:**
-    *   `mjpegviewer` for displaying MJPEG streams.
     *   `AndroidUSBCamera` for external webcam support.
 
 ## How It Works
@@ -35,9 +33,9 @@ The core of the application is the `ObjectDetectorHelper` class, which manages t
 3.  Processing input from different sources (ImageProxy, Bitmap) and running inference.
 4.  Returning detection results to the corresponding UI fragment.
 
-The UI is divided into four main fragments, each handling a specific input source:
+The UI is divided into two main fragments, each handling a specific input source:
+*   `CameraFragment`: Runs detection on the live feed of the device's built-in camera.
 *   `WebcamFragment`: Manages the connection and frame capture from a USB webcam.
-*   `StreamFragment`: Displays a live MJPEG video feed and captures frames for detection.
 
 An `OverlayView` is used across all modes to draw the bounding boxes and labels returned by the detector onto the screen.
 
@@ -47,7 +45,7 @@ An `OverlayView` is used across all modes to draw the bounding boxes and labels 
 
 *   Android Studio (latest stable version)
 *   An Android device (API level 24+)
-*   (Optional) A USB webcam or the Clavo ESP32 hardware for testing all features.
+*   (Optional) A USB webcam for testing all features.
 
 ### Build and Run
 
@@ -69,5 +67,5 @@ An `OverlayView` is used across all modes to draw the bounding boxes and labels 
 
 Use the bottom navigation bar to switch between detection modes:
 
+*   **Camera:** Uses the device's built-in camera.
 *   **Webcam:** Connect a USB webcam to your device (via OTG). Grant permissions when prompted.
-*   **Clavo Hardware:** Connect your Android device to the Wi-Fi network hosted by the ESP32 S3 hardware. The app will automatically connect to the MJPEG stream at `http://192.168.4.1/stream`.

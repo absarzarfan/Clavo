@@ -57,6 +57,13 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     private val detectionInterval = 150L
     private var detectionJob: Job? = null
 
+    // True only while the UVC camera is actually open and rendering frames.
+    @Volatile
+    private var isCameraOpened = false
+
+    private val isDetectorReady: Boolean
+        get() = this::objectDetectorHelper.isInitialized
+
     // Replace your existing onCreateView with this:
     override fun getRootView(inflater: LayoutInflater, container: ViewGroup?): View? {
         _binding = FragmentWebcamBinding.inflate(inflater, container, false)
@@ -70,13 +77,29 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         when (code) {
             ICameraStateCallBack.State.OPENED -> {
                 Log.d(TAG, "USB Camera Opened")
+                isCameraOpened = true
+                // Start detection only now that frames can be read from the camera.
+                activity?.runOnUiThread {
+                    if (_binding != null && isDetectorReady) startRealTimeDetection()
+                }
             }
             ICameraStateCallBack.State.CLOSED -> {
                 Log.d(TAG, "USB Camera Closed")
+                isCameraOpened = false
+                activity?.runOnUiThread {
+                    detectionJob?.cancel()
+                    _binding?.overlay?.clear()
+                }
             }
             ICameraStateCallBack.State.ERROR -> {
                 Log.e(TAG, "USB Camera Error: $msg")
-                Toast.makeText(context, "Camera Error: $msg", Toast.LENGTH_SHORT).show()
+                isCameraOpened = false
+                activity?.runOnUiThread {
+                    detectionJob?.cancel()
+                    context?.let {
+                        Toast.makeText(it, "Camera Error: $msg", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }
@@ -106,6 +129,10 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             initialModelPath = modelFile?.absolutePath ?: ""
 
             if (initialModelPath.isNotEmpty()) {
+                // Re-loading (e.g. after sync): stop detection and release the previous helper.
+                detectionJob?.cancel()
+                if (isDetectorReady) objectDetectorHelper.release()
+
                 objectDetectorHelper = withContext(Dispatchers.IO) {
                     ObjectDetectorHelper(
                         context = requireContext(),
@@ -118,8 +145,15 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                     )
                 }
 
+                if (_binding == null) {
+                    // View was destroyed while the model was loading.
+                    objectDetectorHelper.release()
+                    return
+                }
                 populateModelSpinner()
-                startRealTimeDetection()
+                // Only run detection if the UVC camera is already open; otherwise
+                // onCameraState(OPENED) will start it.
+                if (isCameraOpened) startRealTimeDetection()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Gagal load model", e)
@@ -167,19 +201,21 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     private fun startRealTimeDetection() {
         detectionJob?.cancel()
+        if (_binding == null || !isDetectorReady || !isCameraOpened) return
         detectionJob = viewLifecycleOwner.lifecycleScope.launch {
             while (isActive) {
-                detectFromWebcam()
+                if (isCameraOpened) detectFromWebcam()
                 delay(detectionInterval)
             }
         }
     }
 
     private fun detectFromWebcam() {
-        if (!isAdded || binding.textureView.bitmap == null) return
+        val b = _binding ?: return
+        if (!isAdded || !isCameraOpened || !isDetectorReady) return
 
         try {
-            val frameBitmap = binding.textureView.getBitmap() ?: return
+            val frameBitmap = b.textureView.getBitmap() ?: return
             val cropped = cropBitmapToSquare(frameBitmap)
             val inputBitmap = Bitmap.createScaledBitmap(cropped, 384, 384, true)
 
@@ -277,31 +313,43 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     override fun onResults(resultBundle: ObjectDetectorHelper.ResultBundle) {
         activity?.runOnUiThread {
+            // The view may already be destroyed when this runs; never touch binding via !!.
+            val b = _binding ?: return@runOnUiThread
+            if (!isAdded || view == null) return@runOnUiThread
+
             val detections = resultBundle.results.firstOrNull()?.detections() ?: emptyList()
             if (detections.isNotEmpty()) {
-                binding.overlay.setResults(
+                b.overlay.setResults(
                     resultBundle.results.first(),
                     DEFAULT_PREVIEW_HEIGHT,
                     DEFAULT_PREVIEW_WIDTH,
                     resultBundle.inputImageRotation
                 )
             } else {
-                binding.overlay.clear()
+                b.overlay.clear()
             }
-            binding.overlay.invalidate()
+            b.overlay.invalidate()
         }
     }
 
     override fun onError(error: String, errorCode: Int) {
         activity?.runOnUiThread {
-            Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+            if (!isAdded) return@runOnUiThread
+            context?.let { Toast.makeText(it, error, Toast.LENGTH_SHORT).show() }
         }
     }
 
     // ==================== Lifecycle ====================
 
     override fun onDestroyView() {
+        // Stop the producer, detach the callback, then close the detector.
         detectionJob?.cancel()
+        detectionJob = null
+        isCameraOpened = false
+        if (isDetectorReady) {
+            objectDetectorHelper.objectDetectorListener = null
+            objectDetectorHelper.release()
+        }
         _binding = null
         super.onDestroyView()
     }

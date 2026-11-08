@@ -25,11 +25,6 @@
         android:icon="@drawable/webcam"
         android:title="@string/webcam" />
 
-    <item
-        android:id="@+id/stream_fragment"
-        android:icon="@drawable/icons8_motherboard_24"
-        android:title="@string/clavo_hardware" />
-
 <!--    <item-->
 <!--        android:id="@id/gallery_fragment"-->
 <!--        android:icon="@drawable/ic_baseline_photo_library_24"-->

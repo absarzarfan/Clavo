@@ -36,7 +36,6 @@
     <string name="label_models">Pilih Model</string>
     <string name="menu_camera">Camera</string>
     <string name="webcam">Webcam</string>
-    <string name="clavo_hardware">IoT</string>
     <string name="menu_gallery">Gallery</string>
     <string name="tv_gallery_placeholder">Click + to add an image or a video
         to begin running the object detection.</string>
