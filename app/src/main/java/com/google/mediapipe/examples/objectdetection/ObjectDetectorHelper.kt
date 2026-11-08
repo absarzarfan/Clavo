@@ -27,7 +27,6 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
-import com.google.mediapipe.examples.objectdetection.utils.ModelManager.getModelFilePath
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -160,12 +159,12 @@ class ObjectDetectorHelper(
             }
         } catch (e: IllegalStateException) {
             objectDetectorListener?.onError(
-                "Object detector failed to initialize. See error logs for details"
+                "Model gagal dimuat ($modelPath): ${e.message}"
             )
             Log.e(TAG, "TFLite failed to load model with error: " + e.message)
         } catch (e: RuntimeException) {
             objectDetectorListener?.onError(
-                "Object detector failed to initialize. See error logs for " + "details",
+                "Model gagal dimuat ($modelPath): ${e.message}",
                 GPU_ERROR
             )
             Log.e(

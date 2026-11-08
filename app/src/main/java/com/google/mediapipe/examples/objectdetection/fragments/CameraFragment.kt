@@ -16,15 +16,12 @@
 package com.google.mediapipe.examples.objectdetection.fragments
 
 import android.annotation.SuppressLint
-import android.widget.ArrayAdapter
-import java.io.File
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
 import android.widget.Toast
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
@@ -43,13 +40,14 @@ import com.google.mediapipe.examples.objectdetection.MainViewModel
 import com.google.mediapipe.examples.objectdetection.ObjectDetectorHelper
 import com.google.mediapipe.examples.objectdetection.R
 import com.google.mediapipe.examples.objectdetection.databinding.FragmentCameraBinding
-import com.google.mediapipe.examples.objectdetection.utils.ModelManager
+import com.google.mediapipe.examples.objectdetection.utils.ModelRepository
+import com.google.mediapipe.examples.objectdetection.utils.ModelSpinnerController
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.FileOutputStream
-import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -70,7 +68,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var initialModelPath: String = ""
-    private val modelMap = mutableMapOf<String, String>()
+    private var modelSpinnerController: ModelSpinnerController? = null
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -123,6 +121,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     // Cleans up the view binding and shuts down the background executor.
     override fun onDestroyView() {
         _fragmentCameraBinding = null
+        modelSpinnerController = null
 
         // Order matters: stop frames -> stop executor -> close detector.
         imageAnalyzer?.clearAnalyzer()
@@ -159,45 +158,6 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         return fragmentCameraBinding.root
     }
 
-    // Sebuah fungsi untuk menampung logika sinkronisasi
-    private fun syncModels() {
-        // Akses tombol dan ProgressBar
-        val syncButton = fragmentCameraBinding.bottomSheetLayout.syncButton
-        // Asumsi sync_progress_bar berada di dalam included layout
-
-        Log.d(TAG, "Sync button triggered.")
-        Toast.makeText(context, "Syncing models...", Toast.LENGTH_SHORT).show()
-
-        // START LOADING STATE
-        syncButton.isEnabled = false
-        syncButton.text = "Loading.."
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    ModelManager.getModelFilePath(requireContext())
-                }
-                Toast.makeText(context, "Sync successful!", Toast.LENGTH_SHORT).show()
-                reloadModelsAndUpdateUI()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Sync failed: ${e.message}", Toast.LENGTH_LONG).show()
-                Log.e(TAG, "Sync failed", e)
-            } finally {
-                // END LOADING STATE (Always execute)
-                syncButton.text = "Sync Models" // Kembalikan teks tombol
-                syncButton.isEnabled = true // Aktifkan kembali tombol
-            }
-        }
-    }
-
-    private fun setupSyncButton() {
-        val syncButton = fragmentCameraBinding.bottomSheetLayout.syncButton // Asumsi Anda menggunakan ViewBinding atau findViewById
-
-        syncButton.setOnClickListener {
-            syncModels()
-        }
-    }
-
     // Initializes the object detector, camera, and UI controls after the view is created.
     @SuppressLint("MissingPermission")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -205,18 +165,22 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
 
         backgroundExecutor = Executors.newSingleThreadExecutor()
 
+        initBottomSheetControls()
+
+        // Runs on Main; heavy work is moved to IO inside. Cancelled automatically when the
+        // view is destroyed.
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
             try {
-                // Panggil fungsi inisialisasi yang aman
-                withContext(Dispatchers.IO) {
-                    initializeDetectorAndCamera()
-                }
+                initializeDetectorAndCamera()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to initialize detector", e)
-                Toast.makeText(requireContext(), "Gagal memuat: ${e.message}", Toast.LENGTH_LONG).show()
+                context?.let {
+                    Toast.makeText(it, "Gagal memuat: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
-        initBottomSheetControls()
         fragmentCameraBinding.overlay.setRunningMode(RunningMode.LIVE_STREAM)
 
         // Pengecekan Awal Orientasi Saat Fragment dibuat
@@ -268,179 +232,64 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         return Pair(bottomNav, toolbar)
     }
 
-    // Formats the model filename into a human-readable string for the spinner.
-    private fun formatModelNameForDisplay(filename: String): String {
-        return filename
-            .substringAfter('_')
-            .removeSuffix(".tflite")
-            .replace('_', ' ')
-            .split(' ')
-            .joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
-    }
-
+    // Must be called on Main. Every await is followed by a check that the view still exists.
     private suspend fun initializeDetectorAndCamera() {
-        val modelDir = File(requireContext().filesDir, "models")
-        val defaultModelFileName = "efficientdet-lite0.tflite"
+        val ctx = context?.applicationContext ?: return
+        if (_fragmentCameraBinding == null) return
 
-        // Pastikan folder models ada
-        if (!modelDir.exists()) {
-            modelDir.mkdirs()
-        }
+        val available = withContext(Dispatchers.IO) { ModelRepository.listModels(ctx) }
+        if (_fragmentCameraBinding == null) return
 
-        // Salin model dari assets jika tidak ada model di penyimpanan lokal
-        val localFiles = modelDir.listFiles { _, name -> name.endsWith(".tflite") }
-        if (localFiles.isNullOrEmpty()) {
-            copyModelFromAssets(defaultModelFileName)
-        }
-
-        // Ambil path model yang akan digunakan
-        val modelFile = modelDir.listFiles { _, name -> name.endsWith(".tflite") }?.firstOrNull()
-        if (modelFile == null) {
-            throw IllegalStateException("Tidak ada model ditemukan setelah menyalin dari assets.")
-        }
-
-        initialModelPath = modelFile.absolutePath
-
-        // Inisialisasi objectDetectorHelper
-        objectDetectorHelper = ObjectDetectorHelper(
-            context = requireContext(),
-            threshold = viewModel.currentThreshold,
-            currentDelegate = viewModel.currentDelegate,
-            modelPath = initialModelPath,
-            maxResults = viewModel.currentMaxResults,
-            objectDetectorListener = this,
-            runningMode = RunningMode.LIVE_STREAM
-        )
-
-        // Logika UI harus di main thread
-        withContext(Dispatchers.Main) {
-            fragmentCameraBinding.viewFinder.post {
-                setUpCamera()
-            }
-            val modelFiles = modelDir.listFiles { _, name -> name.endsWith(".tflite") }?.map { it.name } ?: emptyList()
-            populateModelSpinner(modelFiles, initialModelPath)
-//            setupPullToRefresh()
-            setupSyncButton()
-        }
-    }
-
-    private suspend fun copyModelFromAssets(fileName: String) {
-        val assetManager = requireContext().assets
-        val outputDir = File(requireContext().filesDir, "models")
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
-        }
-        val outputFile = File(outputDir, fileName)
-
-        if (!outputFile.exists()) {
-            withContext(Dispatchers.IO) {
-                try {
-                    assetManager.open(fileName).use { inputStream ->
-                        FileOutputStream(outputFile).use { outputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
-                    Log.i(TAG, "✅ Model '$fileName' berhasil disalin dari assets.")
-                } catch (e: IOException) {
-                    Log.e(TAG, "❌ Gagal menyalin model dari assets: ${e.message}", e)
-                    throw e
-                }
-            }
-        }
-    }
-
-
-    // Populates the model selection spinner with available models and sets the current selection.
-    private fun populateModelSpinner(modelDisplayNames: List<String>,  modelToSelectPath: String) {
-        val modelDir = File(requireContext().filesDir, "models")
-        if (!modelDir.exists()) {
-            Log.e("ModelSetup", "Models directory does not exist.")
+        val initial = ModelRepository.resolveInitialModel(ctx, available)
+        modelSpinnerController?.bind(available, initial)
+        if (initial == null) {
+            Log.e(TAG, "No .tflite models found in assets/models/")
             return
         }
+        initialModelPath = initial.assetPath
 
-        modelMap.clear()
+        // ViewModel is read here (Main, fragment attached), not from the IO thread.
+        val threshold = viewModel.currentThreshold
+        val delegate = viewModel.currentDelegate
+        val maxResults = viewModel.currentMaxResults
 
-        modelDir.listFiles { _, name -> name.endsWith(".tflite") }?.forEach { file ->
-            val cleanName = formatModelNameForDisplay(file.name)
-            modelMap[cleanName] = file.name
+        // NonCancellable: if the view dies mid-load we still get the helper back and release it.
+        val helper = withContext(Dispatchers.IO + NonCancellable) {
+            ObjectDetectorHelper(
+                context = ctx,
+                threshold = threshold,
+                currentDelegate = delegate,
+                modelPath = initial.assetPath,
+                maxResults = maxResults,
+                objectDetectorListener = this@CameraFragment,
+                runningMode = RunningMode.LIVE_STREAM
+            )
         }
 
-        if (modelMap.isEmpty()) {
-            Log.e("ModelSetup", "No .tflite models found.")
+        val b = _fragmentCameraBinding
+        if (b == null) {
+            helper.release()
             return
         }
-
-        val displayNames = modelMap.keys.toList()
-
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, displayNames)
-        fragmentCameraBinding.bottomSheetLayout.spinnerModel.adapter = adapter
-
-        val currentModelName = File(modelToSelectPath).name
-        val currentDisplayName = formatModelNameForDisplay(currentModelName)
-        val currentModelPosition = displayNames.indexOf(currentDisplayName)
-        if (currentModelPosition != -1) {
-            fragmentCameraBinding.bottomSheetLayout.spinnerModel.setSelection(currentModelPosition, false)
-        }
+        objectDetectorHelper = helper
+        b.viewFinder.post { if (_fragmentCameraBinding != null) setUpCamera() }
     }
 
-    // Initializes listeners for the UI controls in the bottom sheet, like the model spinner.
+    // Wires the shared model picker; models are bound once they are loaded.
     private fun initBottomSheetControls() {
-        fragmentCameraBinding.bottomSheetLayout.spinnerModel.onItemSelectedListener =
-            object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: AdapterView<*>?,
-                    view: View?,
-                    position: Int,
-                    id: Long
-                ) {
-                    val selectedDisplayName = parent?.getItemAtPosition(position).toString()
-                    val originalFileName = modelMap[selectedDisplayName] ?: return
-                    val newModelPath = File(requireContext().filesDir, "models/$originalFileName").absolutePath
-
-                    if (this@CameraFragment::objectDetectorHelper.isInitialized && newModelPath != objectDetectorHelper.modelPath) {
-
-                        initialModelPath = newModelPath
-
-                        backgroundExecutor.execute {
-                            objectDetectorHelper.changeModel(newModelPath)
-                        }
-                    }
-                }
-
-                override fun onNothingSelected(p0: AdapterView<*>?) { /* no operation */ }
-            }
-    }
-
-    // Reloads the list of models from storage, updates the UI spinner, and reinitializes the detector.
-    private fun reloadModelsAndUpdateUI() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val modelFiles = withContext(Dispatchers.IO) {
-                    val modelDir = File(requireContext().filesDir, "models")
-                    modelDir.listFiles { _, name -> name.endsWith(".tflite") } ?: emptyArray()
-                }
-
-                if (modelFiles.isEmpty()) {
-                    Toast.makeText(context, "Tidak ada model ditemukan setelah sync.", Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-
-                initialModelPath = modelFiles.first().absolutePath
-
-                withContext(Dispatchers.Main) {
-                    populateModelSpinner(modelFiles.map { it.name }, initialModelPath)
-
-                    backgroundExecutor.execute {
-                        objectDetectorHelper.clearObjectDetector()
-                        objectDetectorHelper.modelPath = initialModelPath
-                        objectDetectorHelper.setupObjectDetector()
-                    }
-
-                    Toast.makeText(context, "UI updated with new model!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Gagal memuat ulang model setelah refresh", e)
-                Toast.makeText(context, "Gagal update UI: ${e.message}", Toast.LENGTH_LONG).show()
+        val sheet = fragmentCameraBinding.bottomSheetLayout
+        modelSpinnerController = ModelSpinnerController(
+            requireContext().applicationContext,
+            sheet.spinnerModel,
+            sheet.modelStatus
+        ) { model ->
+            initialModelPath = model.assetPath
+            if (this::objectDetectorHelper.isInitialized &&
+                this::backgroundExecutor.isInitialized &&
+                !backgroundExecutor.isShutdown
+            ) {
+                backgroundExecutor.execute { objectDetectorHelper.changeModel(model.assetPath) }
+                _fragmentCameraBinding?.overlay?.clear()
             }
         }
     }
@@ -575,7 +424,9 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     // A callback to handle and display errors from the ObjectDetectorHelper.
     override fun onError(error: String, errorCode: Int) {
         activity?.runOnUiThread {
-            Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+            if (_fragmentCameraBinding != null && isAdded) {
+                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+            }
         }
     }
 }

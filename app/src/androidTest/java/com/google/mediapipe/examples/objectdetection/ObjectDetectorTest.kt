@@ -86,7 +86,7 @@ class ObjectDetectorTest {
         var detectionResult: ObjectDetectorResult? = null
         val modelPath = "efficientdet_lite0.tflite"
         val objectDetectorHelper = ObjectDetectorHelper(
-            context = ApplicationProvider.getApplicationContext(),
+            context = InstrumentationRegistry.getInstrumentation().context, // COCO test model lives in androidTest/assets
             runningMode = RunningMode.LIVE_STREAM,
             modelPath = modelPath,
             objectDetectorListener =
@@ -152,7 +152,7 @@ class ObjectDetectorTest {
         val modelPath = "efficientdet_lite0.tflite"
 
         val objectDetectorHelper = ObjectDetectorHelper(
-            context = ApplicationProvider.getApplicationContext(),
+            context = InstrumentationRegistry.getInstrumentation().context, // COCO test model lives in androidTest/assets
             runningMode = RunningMode.VIDEO,
             modelPath = modelPath
         )
@@ -214,7 +214,7 @@ class ObjectDetectorTest {
         val modelPath = "efficientdet_lite0.tflite"
 
         val objectDetectorHelper = ObjectDetectorHelper(
-            context = ApplicationProvider.getApplicationContext(),
+            context = InstrumentationRegistry.getInstrumentation().context, // COCO test model lives in androidTest/assets
             runningMode = RunningMode.IMAGE,
             modelPath = modelPath
         )

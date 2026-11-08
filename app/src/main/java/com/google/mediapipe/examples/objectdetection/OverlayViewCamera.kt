@@ -21,6 +21,7 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
+import com.google.mediapipe.examples.objectdetection.utils.ClassColors
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
 import kotlin.math.max
@@ -31,6 +32,7 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
 
     private var results: ObjectDetectorResult? = null
     private var boxPaint = Paint()
+    private var defaultBoxColor = 0
     private var textBackgroundPaint = Paint()
     private var textPaint = Paint()
     private var scaleFactor: Float = 1f
@@ -71,7 +73,8 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
         textPaint.style = Paint.Style.FILL
         textPaint.textSize = 50f
 
-        boxPaint.color = ContextCompat.getColor(context!!, R.color.mp_primary)
+        defaultBoxColor = ContextCompat.getColor(context!!, R.color.mp_primary)
+        boxPaint.color = defaultBoxColor
         boxPaint.strokeWidth = 8F
         boxPaint.style = Paint.Style.STROKE
     }
@@ -117,12 +120,15 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
                 previewTop + bottom
             )
 
+            // Label and box colour come from the class NAME (model metadata), not the index.
+            val category = results?.detections()!![index].categories()[0]
+            val label = ClassColors.labelFor(category.categoryName(), category.index())
+            boxPaint.color = ClassColors.colorFor(label, defaultBoxColor)
             canvas.drawRect(drawableRect, boxPaint)
 
             // Create text to display alongside detected objects
-            val category = results?.detections()!![index].categories()[0]
             val drawableText =
-                category.categoryName() + " " + String.format(
+                label + " " + String.format(
                     "%.2f",
                     category.score()
                 )

@@ -62,22 +62,20 @@
                 android:id="@+id/spinner_model"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp" android:entries="@array/models_spinner_titles"
+                android:layout_marginTop="4dp"
                 android:minWidth="@dimen/bottom_sheet_spinner_model_min_width"
                 android:spinnerMode="dropdown"
                 android:theme="@style/BottomSheetSpinnerItemStyle" />
 
-            <!-- button sync models -->
-            <Button
-                android:id="@+id/sync_button"
+            <TextView
+                android:id="@+id/model_status"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Sync Models"
-                android:paddingLeft="6dp"
-                android:paddingRight="6dp"
-                android:textColor="@color/WHITE"
-                android:layout_margin="16dp"
-                android:background="@drawable/button_sync_selector"  android:contentDescription="Sync models from server"/>
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:textColor="#D32F2F"
+                android:textSize="@dimen/bottom_sheet_text_size"
+                android:visibility="gone" />
 
         </LinearLayout>
 

@@ -18,9 +18,6 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 apply plugin: "androidx.navigation.safeargs"
-apply plugin: 'de.undercouch.download'
-
-def modelsApiKey = project.findProperty('MODELS_API_KEY') ?: ""
 
 android {
     compileSdkVersion 34
@@ -31,8 +28,6 @@ android {
         targetSdkVersion 33
         versionCode 1
         versionName "1.0.0"
-
-        buildConfigField "String", "MODELS_API_KEY", "\"${modelsApiKey}\""
 
     }
 
@@ -68,13 +63,6 @@ android {
     namespace 'com.google.mediapipe.examples.objectdetection'
 
 }
-
-// import DownloadModels task
-project.ext.ASSET_DIR = projectDir.toString() + '/src/main/assets'
-
-// Download default models; if you wish to use your own models then
-// place them in the "assets" directory and comment out this line.
-apply from:'download_models.gradle'
 
 dependencies {
     // Kotlin lang
