@@ -126,7 +126,7 @@ dependencies {
     androidTestImplementation "androidx.test:runner:1.4.0"
     androidTestImplementation "androidx.test.espresso:espresso-core:3.4.0"
 
-    implementation 'com.google.mediapipe:tasks-vision:0.10.14'
+    implementation 'com.google.mediapipe:tasks-vision:0.10.32'
 
     // MJPEG Viewer
     implementation 'com.perthcpe23.dev:android-mjpeg-view:1.1.2'
