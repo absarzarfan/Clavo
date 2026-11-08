@@ -29,7 +29,6 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature android:name="android.hardware.usb.host" />
-    <uses-permission android:name="android.permission.USB_PERMISSION" />
 <!--    <uses-permission android:name="android.permission.CAMERA" />-->
 
 
@@ -45,6 +44,7 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:clearTaskOnLaunch="true"
+            android:launchMode="singleTask"
             android:exported="true"
             android:icon="@drawable/logo_clavo"
             android:resizeableActivity="true"
@@ -57,6 +57,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- USB webcam plugged in: launches/brings the app forward and grants USB permission -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
 
             <!-- Declare notch support -->
             <meta-data

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Webcam used for testing (VID 0x0C45 = 3141, PID 0x64AB = 25771) -->
+    <usb-device vendor-id="3141" product-id="25771" />
+    <!-- Any UVC video device (USB class 0x0E = 14), matched on device or interface class -->
+    <usb-device class="14" />
+</resources>

@@ -1,6 +1,7 @@
 package com.google.mediapipe.examples.objectdetection.fragments
 
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver // TEMP-ClavoUSB
 import android.content.Context
 import android.hardware.usb.UsbManager
 import android.content.res.Configuration
@@ -24,6 +25,7 @@ import com.google.mediapipe.examples.objectdetection.R
 import com.google.mediapipe.examples.objectdetection.databinding.FragmentWebcamBinding
 import com.google.mediapipe.examples.objectdetection.utils.ModelRepository
 import com.google.mediapipe.examples.objectdetection.utils.ModelSpinnerController
+import com.google.mediapipe.examples.objectdetection.utils.UsbDebugLog // TEMP-ClavoUSB
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.jiangdg.ausbc.MultiCameraClient
 import com.jiangdg.ausbc.base.CameraFragment
@@ -62,10 +64,16 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     // What the user sees when the webcam is not streaming. Only UI feedback: USB permission and
     // device handling stay in libausbc.
-    private enum class WebcamUiState { CHECKING, NO_DEVICE, PERMISSION_DENIED, ERROR, OPEN }
+    private enum class WebcamUiState { CHECKING, NO_DEVICE, PERMISSION_DENIED, OPEN_FAILED, ERROR, OPEN }
 
     private var uiState = WebcamUiState.CHECKING
     private var deniedTicks = 0
+    // Permission is granted but the camera is not open: ticks in a row, and requestPermission()
+    // attempts made for the current plug-in. Both reset on unplug, on open and on "Coba lagi".
+    private var grantedNotOpenTicks = 0
+    private var openAttempts = 0
+    private val MAX_OPEN_ATTEMPTS = 3
+    private var usbLogReceiver: BroadcastReceiver? = null // TEMP-ClavoUSB
     private var lastErrorMessage: String? = null
 
     private val isDetectorReady: Boolean
@@ -81,10 +89,13 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         code: ICameraStateCallBack.State,
         msg: String?
     ) {
+        UsbDebugLog.d("onCameraState code=$code msg=$msg") // TEMP-ClavoUSB
         when (code) {
             ICameraStateCallBack.State.OPENED -> {
                 Log.d(TAG, "USB Camera Opened")
                 isCameraOpened = true
+                grantedNotOpenTicks = 0
+                openAttempts = 0
                 // Start detection only now that frames can be read from the camera.
                 activity?.runOnUiThread {
                     deniedTicks = 0
@@ -116,6 +127,8 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        UsbDebugLog.d("WebcamFragment.onViewCreated") // TEMP-ClavoUSB
+        usbLogReceiver = UsbDebugLog.registerAttachDetachReceiver(requireContext().applicationContext) // TEMP-ClavoUSB
 
         overlay = binding.overlay
 
@@ -145,40 +158,77 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         if (_binding == null) return
         if (isCameraOpened) {
             deniedTicks = 0
+            grantedNotOpenTicks = 0
+            openAttempts = 0
+            UsbDebugLog.d("tick: camera open uiState=$uiState") // TEMP-ClavoUSB
             showWebcamState(WebcamUiState.OPEN)
             return
         }
         // null = libausbc has not registered its USB client yet; say nothing until it has.
-        val devices = try { getDeviceList() } catch (e: Exception) { null } ?: return
+        val devices = try { getDeviceList() } catch (e: Exception) { null }
+        if (devices == null) {
+            UsbDebugLog.d("tick: getDeviceList()=null (libausbc not ready) uiState=$uiState") // TEMP-ClavoUSB
+            return
+        }
         if (devices.isEmpty()) {
+            UsbDebugLog.d("tick: devices=0 opened=false uiState=$uiState deniedTicks=$deniedTicks") // TEMP-ClavoUSB
             deniedTicks = 0
+            grantedNotOpenTicks = 0
+            openAttempts = 0 // unplugged: the next plug-in starts with a fresh budget
             showWebcamState(WebcamUiState.NO_DEVICE)
             return
         }
-        if (uiState == WebcamUiState.ERROR) return // keep the error until the user retries
 
         val ctx = context ?: return
         val usbManager = ctx.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
-        if (devices.any { usbManager.hasPermission(it) }) {
+        val granted = devices.firstOrNull { usbManager.hasPermission(it) }
+        UsbDebugLog.d( // TEMP-ClavoUSB
+            "tick: devices=${devices.size} hasPermission=${granted != null} opened=false " +
+                "uiState=$uiState deniedTicks=$deniedTicks grantedNotOpenTicks=$grantedNotOpenTicks " +
+                "openAttempts=$openAttempts"
+        )
+        if (uiState == WebcamUiState.ERROR) return // keep the error until the user retries
+
+        if (granted != null) {
             deniedTicks = 0
-            showWebcamState(WebcamUiState.CHECKING) // permission granted, camera is opening
+            if (uiState == WebcamUiState.OPEN_FAILED) return // keep until the user taps "Coba lagi"
+            grantedNotOpenTicks++
+            if (grantedNotOpenTicks < 2) {
+                showWebcamState(WebcamUiState.CHECKING) // permission granted, camera is opening
+                return
+            }
+            if (openAttempts >= MAX_OPEN_ATTEMPTS) {
+                showWebcamState(WebcamUiState.OPEN_FAILED)
+                return
+            }
+            // Permission is held but libausbc never opened the camera (its grant broadcast was
+            // missed): call requestPermission() so it goes through processConnect directly.
+            openAttempts++
+            grantedNotOpenTicks = 0
+            UsbDebugLog.d("requestPermission (auto) attempt=$openAttempts/$MAX_OPEN_ATTEMPTS ${UsbDebugLog.describe(usbManager, granted)}") // TEMP-ClavoUSB
+            showWebcamState(WebcamUiState.CHECKING)
+            requestPermission(granted)
             return
         }
         // A webcam is plugged in, there is no USB permission and we are resumed (so the system
         // permission dialog is not on screen): the user dismissed or denied it. Require two
         // consecutive ticks so a dialog that is about to appear is not reported as a denial.
+        grantedNotOpenTicks = 0
         deniedTicks++
         if (deniedTicks >= 2) showWebcamState(WebcamUiState.PERMISSION_DENIED)
     }
 
     private fun retryWebcam() {
         deniedTicks = 0
+        grantedNotOpenTicks = 0
+        openAttempts = 0
         val device = try { getDeviceList()?.firstOrNull() } catch (e: Exception) { null }
         if (device == null) {
             showWebcamState(WebcamUiState.NO_DEVICE)
             return
         }
         showWebcamState(WebcamUiState.CHECKING)
+        UsbDebugLog.d("requestPermission (retry button) VID=${device.vendorId} PID=${device.productId}") // TEMP-ClavoUSB
         requestPermission(device) // libausbc: shows the system dialog or reopens the camera
     }
 
@@ -191,6 +241,8 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             WebcamUiState.PERMISSION_DENIED ->
                 "Izin USB untuk webcam ditolak, jadi webcam tidak bisa dibuka. " +
                     "Tekan \"Coba lagi\" lalu pilih Izinkan."
+            WebcamUiState.OPEN_FAILED ->
+                "Webcam terdeteksi tetapi gagal dibuka. Tekan \"Coba lagi\"."
             WebcamUiState.ERROR ->
                 "Webcam bermasalah: ${lastErrorMessage ?: "kesalahan tidak diketahui"}. " +
                     "Periksa kabel/adaptor OTG lalu tekan \"Coba lagi\"."
@@ -199,7 +251,9 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         b.webcamStatusPanel.visibility = if (message == null) View.GONE else View.VISIBLE
         if (message != null) b.webcamStatusText.text = message
         b.webcamRetryButton.visibility =
-            if (state == WebcamUiState.PERMISSION_DENIED || state == WebcamUiState.ERROR) View.VISIBLE
+            if (state == WebcamUiState.PERMISSION_DENIED || state == WebcamUiState.OPEN_FAILED ||
+                state == WebcamUiState.ERROR
+            ) View.VISIBLE
             else View.GONE
     }
 
@@ -368,7 +422,23 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     // ==================== Lifecycle ====================
 
+    // TEMP-ClavoUSB: onResume/onPause exist only for logging
+    override fun onResume() {
+        super.onResume()
+        UsbDebugLog.d("WebcamFragment.onResume")
+    }
+
+    override fun onPause() {
+        UsbDebugLog.d("WebcamFragment.onPause")
+        super.onPause()
+    }
+
     override fun onDestroyView() {
+        UsbDebugLog.d("WebcamFragment.onDestroyView") // TEMP-ClavoUSB
+        usbLogReceiver?.let { // TEMP-ClavoUSB
+            try { context?.applicationContext?.unregisterReceiver(it) } catch (e: Exception) { }
+            usbLogReceiver = null
+        }
         // Stop the producer, detach the callback, then close the detector.
         detectionJob?.cancel()
         detectionJob = null

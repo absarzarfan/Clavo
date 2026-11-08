@@ -16,6 +16,7 @@
 
 package com.google.mediapipe.examples.objectdetection
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
@@ -25,6 +26,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.google.mediapipe.examples.objectdetection.databinding.ActivityMainBinding
+import com.google.mediapipe.examples.objectdetection.utils.UsbDebugLog // TEMP-ClavoUSB
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
 /**
@@ -42,6 +44,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) UsbDebugLog.logSession(this) // TEMP-ClavoUSB
         activityMainBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(activityMainBinding.root)
 
@@ -53,6 +56,13 @@ class MainActivity : AppCompatActivity() {
         activityMainBinding.navigation.setOnNavigationItemReselectedListener {
             // ignore the reselection
         }
+    }
+
+    // launchMode=singleTask: a USB_DEVICE_ATTACHED while the app is open lands here instead of
+    // creating a new instance. Nothing is reset on purpose; UsbManager grants permission itself.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        UsbDebugLog.d("MainActivity.onNewIntent action=${intent.action}") // TEMP-ClavoUSB
     }
 
     override fun onBackPressed() {
