@@ -44,6 +44,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.init(applicationContext) // TEMP-ClavoLat
+        if (savedInstanceState == null) com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("App", "app_dibuka") // TEMP-ClavoLat
         if (savedInstanceState == null) UsbDebugLog.logSession(this) // TEMP-ClavoUSB
         activityMainBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(activityMainBinding.root)

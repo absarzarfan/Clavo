@@ -42,6 +42,7 @@ import com.google.mediapipe.examples.objectdetection.R
 import com.google.mediapipe.examples.objectdetection.databinding.FragmentCameraBinding
 import com.google.mediapipe.examples.objectdetection.utils.ModelRepository
 import com.google.mediapipe.examples.objectdetection.utils.ModelSpinnerController
+import com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder // TEMP-ClavoLat
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +86,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             this::backgroundExecutor.isInitialized && !backgroundExecutor.isShutdown
         ) {
             // Re-create the detector and re-attach the analyzer after onPause released them.
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Camera", "det", "on", "deteksi_mulai") // TEMP-ClavoLat
             val analyzer = imageAnalyzer
             if (analyzer != null) {
                 backgroundExecutor.execute {
@@ -102,6 +104,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     override fun onPause() {
         super.onPause()
         // 1) Stop the frame producer first so no frame reaches a closed detector.
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Camera", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
         imageAnalyzer?.clearAnalyzer()
 
         if (this::objectDetectorHelper.isInitialized) {
@@ -247,6 +250,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             return
         }
         initialModelPath = initial.assetPath
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setModel("Camera", initial.displayName) // TEMP-ClavoLat
 
         // ViewModel is read here (Main, fragment attached), not from the IO thread.
         val threshold = viewModel.currentThreshold
@@ -284,6 +288,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             sheet.modelStatus
         ) { model ->
             initialModelPath = model.assetPath
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setModel("Camera", model.displayName) // TEMP-ClavoLat
             if (this::objectDetectorHelper.isInitialized &&
                 this::backgroundExecutor.isInitialized &&
                 !backgroundExecutor.isShutdown
@@ -359,6 +364,8 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             )
 
             preview?.setSurfaceProvider(fragmentCameraBinding.viewFinder.surfaceProvider)
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Camera", "kamera_dibuka", "Camera") // TEMP-ClavoLat
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Camera", "det", "on", "deteksi_mulai") // TEMP-ClavoLat
         } catch (exc: Exception) {
             Log.e(TAG, "Use case binding failed", exc)
         }
@@ -392,6 +399,8 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
 
     // A callback to receive and display the detection results from the ObjectDetectorHelper.
     override fun onResults(resultBundle: ObjectDetectorHelper.ResultBundle) {
+        if (this::objectDetectorHelper.isInitialized) com.google.mediapipe.examples.objectdetection.utils.ClavoDetLog.result("Camera", resultBundle, objectDetectorHelper.threshold) // TEMP-ClavoDet
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.resultDelivered("Camera", resultBundle) // TEMP-ClavoLat
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null && isAdded) {
                 Log.d(TAG, "onResults dipanggil dengan ${resultBundle.results.size} hasil.")
@@ -423,6 +432,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
 
     // A callback to handle and display errors from the ObjectDetectorHelper.
     override fun onError(error: String, errorCode: Int) {
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Camera", "error", error.take(80)) // TEMP-ClavoLat
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null && isAdded) {
                 Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()

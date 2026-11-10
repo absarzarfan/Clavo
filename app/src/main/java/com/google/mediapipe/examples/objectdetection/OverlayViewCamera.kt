@@ -80,6 +80,10 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
     }
 
     override fun draw(canvas: Canvas) {
+        try { drawImpl(canvas) } finally { com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.overlayDrawn("Camera") } // TEMP-ClavoLat
+    }
+
+    private fun drawImpl(canvas: Canvas) {
         super.draw(canvas)
         results?.detections()?.map {
             val boxRect = RectF(

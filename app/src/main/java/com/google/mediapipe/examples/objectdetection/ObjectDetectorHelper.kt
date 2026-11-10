@@ -27,6 +27,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
+import com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder // TEMP-ClavoLat
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -282,6 +283,7 @@ class ObjectDetectorHelper(
             )
         }
 
+        LatencyRecorder.frameReceived("Camera") // TEMP-ClavoLat
         // Drop the frame if the detector is closed/released (e.g. while the fragment is stopping)
         if (released || objectDetector == null) {
             imageProxy.close()
@@ -350,6 +352,7 @@ class ObjectDetectorHelper(
             val detector = objectDetector ?: return
             if (!::imageProcessingOptions.isInitialized) return
             try {
+                LatencyRecorder.inferStart(frameTime) // TEMP-ClavoLat
                 detector.detectAsync(mpImage, imageProcessingOptions, frameTime)
             } catch (e: RuntimeException) {
                 Log.e(TAG, "detectAsync failed: " + e.message)
@@ -361,6 +364,7 @@ class ObjectDetectorHelper(
     private fun returnLivestreamResult(
         result: ObjectDetectorResult, input: MPImage
     ) {
+        LatencyRecorder.inferEnd(result.timestampMs()) // TEMP-ClavoLat
         val finishTimeMs = SystemClock.uptimeMillis()
         val inferenceTime = finishTimeMs - result.timestampMs()
 

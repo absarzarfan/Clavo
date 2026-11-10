@@ -26,6 +26,7 @@ import com.google.mediapipe.examples.objectdetection.databinding.FragmentWebcamB
 import com.google.mediapipe.examples.objectdetection.utils.ModelRepository
 import com.google.mediapipe.examples.objectdetection.utils.ModelSpinnerController
 import com.google.mediapipe.examples.objectdetection.utils.UsbDebugLog // TEMP-ClavoUSB
+import com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder // TEMP-ClavoLat
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.jiangdg.ausbc.MultiCameraClient
 import com.jiangdg.ausbc.base.CameraFragment
@@ -93,6 +94,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         when (code) {
             ICameraStateCallBack.State.OPENED -> {
                 Log.d(TAG, "USB Camera Opened")
+                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Webcam", "kamera_dibuka", "Webcam") // TEMP-ClavoLat
                 isCameraOpened = true
                 grantedNotOpenTicks = 0
                 openAttempts = 0
@@ -105,6 +107,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             }
             ICameraStateCallBack.State.CLOSED -> {
                 Log.d(TAG, "USB Camera Closed")
+                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
                 isCameraOpened = false
                 activity?.runOnUiThread {
                     detectionJob?.cancel()
@@ -115,6 +118,8 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             }
             ICameraStateCallBack.State.ERROR -> {
                 Log.e(TAG, "USB Camera Error: $msg")
+                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Webcam", "error", "kamera: " + (msg ?: "?").take(60)) // TEMP-ClavoLat
+                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
                 isCameraOpened = false
                 activity?.runOnUiThread {
                     detectionJob?.cancel()
@@ -170,6 +175,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             UsbDebugLog.d("tick: getDeviceList()=null (libausbc not ready) uiState=$uiState") // TEMP-ClavoUSB
             return
         }
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "dev", if (devices.isEmpty()) "0" else "1", if (devices.isEmpty()) "webcam_dicabut" else "webcam_terdeteksi", skipInitial = devices.isEmpty()) // TEMP-ClavoLat
         if (devices.isEmpty()) {
             UsbDebugLog.d("tick: devices=0 opened=false uiState=$uiState deniedTicks=$deniedTicks") // TEMP-ClavoUSB
             deniedTicks = 0
@@ -182,6 +188,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         val ctx = context ?: return
         val usbManager = ctx.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
         val granted = devices.firstOrNull { usbManager.hasPermission(it) }
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "perm", if (granted != null) "diberikan" else "belum_ada", "izin_usb", if (granted != null) "diberikan" else "belum_ada", skipInitial = granted == null) // TEMP-ClavoLat
         UsbDebugLog.d( // TEMP-ClavoUSB
             "tick: devices=${devices.size} hasPermission=${granted != null} opened=false " +
                 "uiState=$uiState deniedTicks=$deniedTicks grantedNotOpenTicks=$grantedNotOpenTicks " +
@@ -234,6 +241,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     private fun showWebcamState(state: WebcamUiState) {
         uiState = state
+        if (state == WebcamUiState.PERMISSION_DENIED) com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "perm", "ditolak", "izin_usb", "ditolak") // TEMP-ClavoLat
         val b = _binding ?: return
         val message: String? = when (state) {
             WebcamUiState.NO_DEVICE ->
@@ -269,6 +277,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                 return
             }
             initialModelPath = initial.assetPath
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setModel("Webcam", initial.displayName) // TEMP-ClavoLat
 
             detectionJob?.cancel()
             if (isDetectorReady) objectDetectorHelper.release()
@@ -326,6 +335,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     private fun startRealTimeDetection() {
         detectionJob?.cancel()
         if (_binding == null || !isDetectorReady || !isCameraOpened) return
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "on", "deteksi_mulai") // TEMP-ClavoLat
         detectionJob = viewLifecycleOwner.lifecycleScope.launch {
             while (isActive) {
                 if (isCameraOpened) detectFromWebcam()
@@ -339,10 +349,12 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         if (!isAdded || !isCameraOpened || !isDetectorReady) return
 
         try {
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.frameReceived("Webcam") // TEMP-ClavoLat
             val frameBitmap = b.textureView.getBitmap() ?: return
             val cropped = cropBitmapToSquare(frameBitmap)
             val inputBitmap = Bitmap.createScaledBitmap(cropped, 384, 384, true)
 
+            com.google.mediapipe.examples.objectdetection.utils.ClavoDetLog.frame("Webcam", frameBitmap.width, frameBitmap.height, getDeviceRotation(), "cropped=${cropped.width}x${cropped.height} input=${inputBitmap.width}x${inputBitmap.height} cfg=${frameBitmap.config}") // TEMP-ClavoDet
             objectDetectorHelper.detectFromBitmap(inputBitmap, getDeviceRotation())
         } catch (e: Exception) {
             Log.e(TAG, "Error detectFromWebcam", e)
@@ -376,6 +388,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             sheet.spinnerModel,
             sheet.modelStatus
         ) { model ->
+            com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setModel("Webcam", model.displayName) // TEMP-ClavoLat
             if (!isDetectorReady) return@ModelSpinnerController
             detectionJob?.cancel()
             viewLifecycleOwner.lifecycleScope.launch {
@@ -393,6 +406,8 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     // ==================== Detector Listener ====================
 
     override fun onResults(resultBundle: ObjectDetectorHelper.ResultBundle) {
+        if (isDetectorReady) com.google.mediapipe.examples.objectdetection.utils.ClavoDetLog.result("Webcam", resultBundle, objectDetectorHelper.threshold) // TEMP-ClavoDet
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.resultDelivered("Webcam", resultBundle) // TEMP-ClavoLat
         activity?.runOnUiThread {
             // The view may already be destroyed when this runs; never touch binding via !!.
             val b = _binding ?: return@runOnUiThread
@@ -414,6 +429,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     }
 
     override fun onError(error: String, errorCode: Int) {
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Webcam", "error", error.take(80)) // TEMP-ClavoLat
         activity?.runOnUiThread {
             if (!isAdded) return@runOnUiThread
             context?.let { Toast.makeText(it, error, Toast.LENGTH_SHORT).show() }
@@ -435,6 +451,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     override fun onDestroyView() {
         UsbDebugLog.d("WebcamFragment.onDestroyView") // TEMP-ClavoUSB
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
         usbLogReceiver?.let { // TEMP-ClavoUSB
             try { context?.applicationContext?.unregisterReceiver(it) } catch (e: Exception) { }
             usbLogReceiver = null

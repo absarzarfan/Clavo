@@ -98,6 +98,10 @@ class OverlayViewWebcam(context: Context?, attrs: AttributeSet?) :
      * the bounding box and its corresponding label (category and score) onto the Canvas.
      */
     override fun draw(canvas: Canvas) {
+        try { drawImpl(canvas) } finally { com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.overlayDrawn("Webcam") } // TEMP-ClavoLat
+    }
+
+    private fun drawImpl(canvas: Canvas) {
         super.draw(canvas)
 
         results?.detections()?.forEach { detection ->
