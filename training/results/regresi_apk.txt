@@ -1,0 +1,11 @@
+﻿Regresi Cengkeh: APK A (hanya Cengkeh) vs B (+ mangga v1, v2). Dibangun 11 Nov 2026 dari commit 66b8a03.
+
+## A_cengkeh  ukuran_apk=82163107
+assets/models/efficientdet_lite2_cengkeh_V2.tflite
+sha256 cengkeh: 3263AD49EAB9C99C67A340A74C9AC3909EC9275629D528B03B2EFAD629704C3F
+
+## B_lengkap  ukuran_apk=96948793
+assets/models/efficientdet_lite2_cengkeh_V2.tflite
+assets/models/efficientdet_lite2_mangga_v1.tflite
+assets/models/efficientdet_lite2_mangga_v2.tflite
+sha256 cengkeh: 3263AD49EAB9C99C67A340A74C9AC3909EC9275629D528B03B2EFAD629704C3F
