@@ -29,3 +29,14 @@ PENDING (urut)
 
 JANGAN
 - Jangan menyalin gradle.properties atau API key. Jangan menulis hasil yang belum diukur.
+
+## UPDATE 11 Nov 2026
+- Regresi APK A vs B sah: A 82.163.107 byte, B 96.948.793 byte (+14.785.686, 7,39 MB per model mangga); hash Cengkeh identik (3263AD49...704C3F), sama dengan file di server (zip Pak Hajrul).
+- Evaluasi test split (153 gambar, 166 objek), skor 0,3 dan IoU 0,5: v1 macro-F1 0,831, v2 0,854. Busuk terbaca matang: v1 7/19, v2 5/19. Hasil di training/results.
+- Semua model berinput 448x448. V3 tim (Manggo, 14 Okt 2025) berlabel sama; bukan hasil latih penulis.
+- Prompt 7 (latensi, log aktivitas), Prompt 8 (tes), Prompt 9 (perbaikan webcam: overlay, input 448, rotasi manual, slider threshold, status dari frame) sudah di-commit dan di-push. Tes unit 41/41. BELUM diuji di HP.
+- APK uji: Downloads/clavo_prompt9_debug.apk (laptop).
+
+## SISA (butuh HP dan webcam)
+- Uji posisi kotak di 4 rotasi, slider threshold, status cabut-colok, latensi (CSV), TC-01..TC-11, 30 sesi, UAT.
+- Golden Cengkeh: jalankan CengkehRegressionTest sekali di perangkat, salin golden ke androidTest/assets.
