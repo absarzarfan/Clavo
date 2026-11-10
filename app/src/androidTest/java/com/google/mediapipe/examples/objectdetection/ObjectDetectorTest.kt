@@ -31,9 +31,8 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.BeforeAll
+import org.junit.BeforeClass
+import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.FileOutputStream
@@ -56,7 +55,7 @@ class ObjectDetectorTest {
         private lateinit var lock: ReentrantLock
         private lateinit var condition: Condition
 
-        @BeforeAll
+        @BeforeClass
         @JvmStatic
         fun setup() {
             lock = ReentrantLock()
@@ -81,7 +80,7 @@ class ObjectDetectorTest {
      * Verify that the result returned from the Object Detector Helper with
      * LIVE_STREAM mode is within the acceptable range to the expected result.
      */
-    @org.junit.jupiter.api.Test
+    @Test
     fun detectionResultsFromLiveStreamModeFallsWithinAcceptedRange() {
         var detectionResult: ObjectDetectorResult? = null
         val modelPath = "efficientdet_lite0.tflite"
@@ -209,7 +208,7 @@ class ObjectDetectorTest {
      * Verify that the result returned from the Object Detector Helper with
      * IMAGE mode is within the acceptable range to the expected result.
      */
-    @org.junit.jupiter.api.Test
+    @Test
     fun detectionResultsFromImageModeFallsWithinAcceptedRange() {
         val modelPath = "efficientdet_lite0.tflite"
 
