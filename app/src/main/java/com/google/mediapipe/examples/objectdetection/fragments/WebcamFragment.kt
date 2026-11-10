@@ -6,6 +6,15 @@ import android.content.Context
 import android.hardware.usb.UsbManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.view.View.OnLayoutChangeListener
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.SeekBar
+import com.google.mediapipe.examples.objectdetection.databinding.InfoBottomSheetBinding
+import com.google.mediapipe.examples.objectdetection.utils.DetectionPrefs
+import com.google.mediapipe.examples.objectdetection.utils.FrameMapping
+import com.google.mediapipe.examples.objectdetection.utils.ThresholdScale
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -53,7 +62,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     private var initialModelPath: String = ""
     private var modelSpinnerController: ModelSpinnerController? = null
 
-    private val DEFAULT_PREVIEW_WIDTH = 640
+    private val DEFAULT_PREVIEW_WIDTH = 640 // requested UVC size (not used for overlay scaling)
     private val DEFAULT_PREVIEW_HEIGHT = 480
     private val detectionInterval = 150L
     private val STATUS_POLL_MS = 1000L
@@ -77,6 +86,18 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     private var usbLogReceiver: BroadcastReceiver? = null // TEMP-ClavoUSB
     private var lastErrorMessage: String? = null
 
+    // Manual rotation (0/90/180/270, clockwise), shared by preview, detector bitmap and overlay.
+    private var webcamRotation = 0
+    // Frame the detector input was cut from (un-rotated TextureView bitmap size + rotation used).
+    @Volatile private var lastFrameW = 0
+    @Volatile private var lastFrameH = 0
+    @Volatile private var lastFrameRot = 0
+    // Status is derived from frames that really arrive (SurfaceTexture timestamp changes).
+    private var lastSurfaceTs = 0L
+    private var openedByFrames = false
+    private var staleTicks = 0
+    private var noDeviceTicks = 0
+
     private val isDetectorReady: Boolean
         get() = this::objectDetectorHelper.isInitialized
 
@@ -96,6 +117,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                 Log.d(TAG, "USB Camera Opened")
                 com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Webcam", "kamera_dibuka", "Webcam") // TEMP-ClavoLat
                 isCameraOpened = true
+                openedByFrames = false
                 grantedNotOpenTicks = 0
                 openAttempts = 0
                 // Start detection only now that frames can be read from the camera.
@@ -136,6 +158,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         usbLogReceiver = UsbDebugLog.registerAttachDetachReceiver(requireContext().applicationContext) // TEMP-ClavoUSB
 
         overlay = binding.overlay
+        webcamRotation = DetectionPrefs.getWebcamRotation(requireContext())
 
         // Setup MediaPipe Object Detector
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
@@ -159,13 +182,43 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     // ==================== Webcam status feedback ====================
 
+    private fun readFrameTimestamp(): Long = try {
+        _binding?.textureView?.surfaceTexture?.timestamp ?: 0L
+    } catch (e: Exception) {
+        0L
+    }
+
     private fun evaluateWebcamStatus() {
         if (_binding == null) return
-        if (isCameraOpened) {
+
+        // 1) Frames that really arrive win over everything else: the texture timestamp changed
+        //    since the previous tick.
+        val ts = readFrameTimestamp()
+        val framesFlowing = ts != 0L && ts != lastSurfaceTs
+        lastSurfaceTs = ts
+        if (framesFlowing) {
+            staleTicks = 0
+            if (!isCameraOpened) {
+                // onCameraState(OPENED) was missed, but the preview is alive: treat it as open.
+                isCameraOpened = true
+                openedByFrames = true
+                Log.d(TAG, "Frames arriving without OPENED callback: treating webcam as open")
+                if (isDetectorReady) startRealTimeDetection()
+            }
+        } else if (openedByFrames && ++staleTicks >= 2) {
+            // We only believed "open" because of frames, and they stopped.
+            openedByFrames = false
+            isCameraOpened = false
+            detectionJob?.cancel()
+            _binding?.overlay?.clear()
+        }
+
+        if (isCameraOpened || framesFlowing) {
             deniedTicks = 0
             grantedNotOpenTicks = 0
             openAttempts = 0
-            UsbDebugLog.d("tick: camera open uiState=$uiState") // TEMP-ClavoUSB
+            noDeviceTicks = 0
+            UsbDebugLog.d("tick: camera open framesFlowing=$framesFlowing uiState=$uiState") // TEMP-ClavoUSB
             showWebcamState(WebcamUiState.OPEN)
             return
         }
@@ -181,9 +234,12 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             deniedTicks = 0
             grantedNotOpenTicks = 0
             openAttempts = 0 // unplugged: the next plug-in starts with a fresh budget
-            showWebcamState(WebcamUiState.NO_DEVICE)
+            // "No webcam" only after two consecutive ticks without device and without frames.
+            noDeviceTicks++
+            showWebcamState(if (noDeviceTicks >= 2) WebcamUiState.NO_DEVICE else WebcamUiState.CHECKING)
             return
         }
+        noDeviceTicks = 0
 
         val ctx = context ?: return
         val usbManager = ctx.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
@@ -285,7 +341,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             objectDetectorHelper = withContext(Dispatchers.IO) {
                 ObjectDetectorHelper(
                     context = ctx,
-                    threshold = viewModel.currentThreshold,
+                    threshold = DetectionPrefs.getThreshold(ctx, DetectionPrefs.MODE_WEBCAM),
                     currentDelegate = viewModel.currentDelegate,
                     modelPath = initialModelPath,
                     maxResults = viewModel.currentMaxResults,
@@ -350,34 +406,71 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
         try {
             com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.frameReceived("Webcam") // TEMP-ClavoLat
-            val frameBitmap = b.textureView.getBitmap() ?: return
-            val cropped = cropBitmapToSquare(frameBitmap)
-            val inputBitmap = Bitmap.createScaledBitmap(cropped, 384, 384, true)
-
-            com.google.mediapipe.examples.objectdetection.utils.ClavoDetLog.frame("Webcam", frameBitmap.width, frameBitmap.height, getDeviceRotation(), "cropped=${cropped.width}x${cropped.height} input=${inputBitmap.width}x${inputBitmap.height} cfg=${frameBitmap.config}") // TEMP-ClavoDet
-            objectDetectorHelper.detectFromBitmap(inputBitmap, getDeviceRotation())
+            val frame = b.textureView.getBitmap() ?: return
+            val rot = webcamRotation
+            // Rotate so the detector sees exactly what the user sees (preview is rotated the same way).
+            val rotated = if (rot == 0) frame else Bitmap.createBitmap(
+                frame, 0, 0, frame.width, frame.height, Matrix().apply { postRotate(rot.toFloat()) }, true
+            )
+            val sq = FrameMapping.centerSquare(rotated.width, rotated.height)
+            val cropped = Bitmap.createBitmap(rotated, sq.x, sq.y, sq.side, sq.side)
+            val input = Bitmap.createScaledBitmap(
+                cropped, FrameMapping.MODEL_INPUT_SIZE, FrameMapping.MODEL_INPUT_SIZE, true
+            )
+            lastFrameW = frame.width
+            lastFrameH = frame.height
+            lastFrameRot = rot
+            com.google.mediapipe.examples.objectdetection.utils.ClavoDetLog.frame("Webcam", frame.width, frame.height, rot, "manualRot=$rot rotated=${rotated.width}x${rotated.height} crop=${sq.side} input=${input.width}x${input.height}") // TEMP-ClavoDet
+            // Rotation is already baked into the bitmap, so the detector gets 0.
+            objectDetectorHelper.detectFromBitmap(input, 0)
         } catch (e: Exception) {
             Log.e(TAG, "Error detectFromWebcam", e)
         }
     }
 
-    private fun cropBitmapToSquare(bitmap: Bitmap): Bitmap {
-        val side = minOf(bitmap.width, bitmap.height)
-        val x = (bitmap.width - side) / 2
-        val y = (bitmap.height - side) / 2
-        return Bitmap.createBitmap(bitmap, x, y, side, side)
-    }
-
-    private fun getDeviceRotation(): Int {
-        return if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 90 else 0
-    }
-
     // ==================== UI & Model Spinner ====================
 
+    // Keeps the TextureView rotation/scale in step with the chosen rotation and its container.
     private fun setupRotationLayout() {
-        view?.viewTreeObserver?.addOnGlobalLayoutListener {
-            // Rotation handling code (bisa kamu sesuaikan lagi)
+        val b = _binding ?: return
+        val listener = OnLayoutChangeListener { _, l, t, r, bt, ol, ot, or2, ob ->
+            if (r - l != or2 - ol || bt - t != ob - ot) applyRotationTransform()
         }
+        b.textureView.addOnLayoutChangeListener(listener)
+        b.webcamContainer.addOnLayoutChangeListener(listener)
+        applyRotationTransform()
+    }
+
+    // Rotates the preview clockwise by webcamRotation and, for 90/270, shrinks it so the rotated
+    // image still fits inside the container. The overlay reads this same transform.
+    private fun applyRotationTransform() {
+        val b = _binding ?: return
+        val tv = b.textureView
+        val c = b.webcamContainer
+        val rot = webcamRotation
+        var s = 1f
+        if (rot % 180 != 0 && tv.width > 0 && tv.height > 0 && c.width > 0 && c.height > 0) {
+            s = minOf(c.width / tv.height.toFloat(), c.height / tv.width.toFloat())
+        }
+        tv.rotation = rot.toFloat()
+        tv.scaleX = s
+        tv.scaleY = s
+    }
+
+    // Frame (TextureView-local pixels) -> overlay coordinates: the TextureView's own transform
+    // (rotation + scale about its centre), its position in the container, and the container's
+    // offset to the overlay.
+    private fun frameToOverlayMatrix(): Matrix? {
+        val b = _binding ?: return null
+        val tv = b.textureView
+        val m = Matrix(tv.matrix)
+        m.postTranslate(tv.left.toFloat(), tv.top.toFloat())
+        val a = IntArray(2)
+        val o = IntArray(2)
+        b.webcamContainer.getLocationOnScreen(a)
+        b.overlay.getLocationOnScreen(o)
+        m.postTranslate((a[0] - o[0]).toFloat(), (a[1] - o[1]).toFloat())
+        return m
     }
 
     // Wires the shared model picker; models are bound once they are loaded.
@@ -401,6 +494,69 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                 startRealTimeDetection()
             }
         }
+        initThresholdControl(sheet)
+        initRotationControl(sheet)
+    }
+
+    private fun thresholdText(v: Float) = String.format(java.util.Locale.US, "Ambang skor: %.2f", v)
+
+    private fun initThresholdControl(sheet: InfoBottomSheetBinding) {
+        val ctx = requireContext().applicationContext
+        val saved = DetectionPrefs.getThreshold(ctx, DetectionPrefs.MODE_WEBCAM)
+        sheet.thresholdSeekbar.max = ThresholdScale.STEPS
+        sheet.thresholdSeekbar.progress = ThresholdScale.toProgress(saved)
+        sheet.thresholdLabel.text = thresholdText(saved)
+        sheet.thresholdSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                sheet.thresholdLabel.text = thresholdText(ThresholdScale.fromProgress(progress))
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(bar: SeekBar?) {
+                applyThreshold(ThresholdScale.fromProgress(bar?.progress ?: return))
+            }
+        })
+    }
+
+    // Saves the threshold and rebuilds the detector with it.
+    private fun applyThreshold(value: Float) {
+        DetectionPrefs.setThreshold(requireContext().applicationContext, DetectionPrefs.MODE_WEBCAM, value)
+        Log.i("ClavoDet", "[Webcam] scoreThreshold set to $value") // TEMP-ClavoDet
+        if (!isDetectorReady) return
+        detectionJob?.cancel()
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO + NonCancellable) {
+                objectDetectorHelper.threshold = value
+                objectDetectorHelper.clearObjectDetector()
+                objectDetectorHelper.setupObjectDetector()
+            }
+            _binding?.overlay?.clear()
+            startRealTimeDetection()
+        }
+    }
+
+    private fun initRotationControl(sheet: InfoBottomSheetBinding) {
+        val options = listOf(0, 90, 180, 270)
+        sheet.rotationRow.visibility = View.VISIBLE // hidden by default; only the Webcam screen shows it
+        sheet.spinnerRotation.adapter = ArrayAdapter(
+            requireContext(), android.R.layout.simple_spinner_dropdown_item, options.map { "$it°" }
+        )
+        sheet.spinnerRotation.setSelection(options.indexOf(webcamRotation).coerceAtLeast(0), false)
+        Log.i("ClavoDet", "[Webcam] manual rotation=$webcamRotation") // TEMP-ClavoDet
+        sheet.spinnerRotation.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val rot = options[position]
+                if (rot == webcamRotation) return
+                webcamRotation = rot
+                DetectionPrefs.setWebcamRotation(requireContext().applicationContext, rot)
+                Log.i("ClavoDet", "[Webcam] manual rotation=$rot") // TEMP-ClavoDet
+                applyRotationTransform()
+                _binding?.overlay?.clear()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
     }
 
     // ==================== Detector Listener ====================
@@ -413,14 +569,14 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             val b = _binding ?: return@runOnUiThread
             if (!isAdded || view == null) return@runOnUiThread
 
-            val detections = resultBundle.results.firstOrNull()?.detections() ?: emptyList()
-            if (detections.isNotEmpty()) {
-                b.overlay.setResults(
-                    resultBundle.results.first(),
-                    DEFAULT_PREVIEW_HEIGHT,
-                    DEFAULT_PREVIEW_WIDTH,
-                    resultBundle.inputImageRotation
-                )
+            val result = resultBundle.results.firstOrNull()
+            val detections = result?.detections() ?: emptyList()
+            val matrix = frameToOverlayMatrix()
+            // Drop results made with another rotation than the one now on screen.
+            if (result != null && detections.isNotEmpty() && matrix != null &&
+                lastFrameW > 0 && lastFrameH > 0 && lastFrameRot == webcamRotation
+            ) {
+                b.overlay.setResults(result, lastFrameW, lastFrameH, lastFrameRot, matrix)
             } else {
                 b.overlay.clear()
             }

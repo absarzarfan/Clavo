@@ -34,7 +34,8 @@ object ClavoDetLog { // TEMP-ClavoDet
             TAG,
             "[$source] ${frameInfo[source] ?: "frame=?"} mpInput=${bundle.inputImageWidth}x${bundle.inputImageHeight} " +
                 "bundleRot=${bundle.inputImageRotation} inference=${bundle.inferenceTime}ms " +
-                "detections=${detections.size} maxScore[$maxPerClass] scoreThreshold=$threshold"
+                "detections=${detections.size} maxScore[$maxPerClass] scoreThreshold=$threshold" +
+                (if (threshold <= 0.1f) " RAW(threshold<=0.1: scores of all detections above it, at most maxResults per frame)" else "")
         ) // TEMP-ClavoDet
     } // TEMP-ClavoDet
 } // TEMP-ClavoDet

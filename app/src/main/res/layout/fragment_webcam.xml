@@ -19,12 +19,13 @@
             android:layout_height="match_parent"
             android:layout_gravity="center" />
 
-        <com.google.mediapipe.examples.objectdetection.OverlayViewWebcam
-            android:id="@+id/overlay"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
     </FrameLayout>
+
+    <!-- Outside webcam_container: libausbc empties that container, which would remove the overlay. -->
+    <com.google.mediapipe.examples.objectdetection.OverlayViewWebcam
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
     <!-- Status/error panel. Kept outside webcam_container: libausbc empties that container. -->
     <LinearLayout

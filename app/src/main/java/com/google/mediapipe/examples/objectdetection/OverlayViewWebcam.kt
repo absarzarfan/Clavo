@@ -22,10 +22,18 @@ import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.google.mediapipe.examples.objectdetection.utils.ClassColors
-import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.examples.objectdetection.utils.FrameMapping
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
-import kotlin.math.min
 
+/**
+ * Draws webcam detections. It is a sibling of the webcam container (not a child), because
+ * libausbc empties that container.
+ *
+ * Boxes arrive in detector space (MODEL_INPUT_SIZE square). [FrameMapping.modelBoxToFrame] maps
+ * them to the un-rotated TextureView frame, and [frameToOverlay] (the TextureView's own transform,
+ * including the manual rotation and fit scale, expressed in this view's coordinates) maps them to
+ * the screen. No scale factor is stored, so there is nothing that can be left at 0.
+ */
 class OverlayViewWebcam(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
 
@@ -34,27 +42,18 @@ class OverlayViewWebcam(context: Context?, attrs: AttributeSet?) :
     private var defaultBoxColor = 0
     private var textBackgroundPaint = Paint()
     private var textPaint = Paint()
-    private var scaleFactor: Float = 1f
     private var bounds = Rect()
-    private var outputWidth = 0
-    private var outputHeight = 0
-    private var outputRotate = 0
-    private var runningMode: RunningMode = RunningMode.IMAGE
-    private var previewWidth = 0
-    private var previewHeight = 0
-    private var previewLeft = 0f
-    private var previewTop = 0f
 
+    private var frameWidth = 0
+    private var frameHeight = 0
+    private var rotation90 = 0
+    private val frameToOverlay = Matrix()
 
     init {
         initPaints()
     }
 
-
-    /**
-     * Resets the view by clearing the last detection results, resetting the paint objects,
-     * and forcing a redraw. It then re-initializes the paints for future use.
-     */
+    /** Clears the last results and redraws an empty overlay. */
     fun clear() {
         results = null
         textPaint.reset()
@@ -64,18 +63,6 @@ class OverlayViewWebcam(context: Context?, attrs: AttributeSet?) :
         initPaints()
     }
 
-    /**
-     * Sets the operational mode of the overlay (e.g., IMAGE, VIDEO, LIVE_STREAM).
-     * This can affect how scaling is calculated.
-     */
-    fun setRunningMode(runningMode: RunningMode) {
-        this.runningMode = runningMode
-    }
-
-    /**
-     * Initializes the Paint objects used for drawing the bounding boxes and labels.
-     * This includes setting colors, styles, and text sizes.
-     */
     private fun initPaints() {
         textBackgroundPaint.color = Color.BLACK
         textBackgroundPaint.style = Paint.Style.FILL
@@ -91,142 +78,71 @@ class OverlayViewWebcam(context: Context?, attrs: AttributeSet?) :
         boxPaint.style = Paint.Style.STROKE
     }
 
-    /**
-     * The main drawing function. This method is called by the Android framework to render the view.
-     * It iterates through each detected object from the ObjectDetectorResult, transforms the bounding
-     * box coordinates from the model's input space to the screen's display space, and then draws
-     * the bounding box and its corresponding label (category and score) onto the Canvas.
-     */
     override fun draw(canvas: Canvas) {
         try { drawImpl(canvas) } finally { com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.overlayDrawn("Webcam") } // TEMP-ClavoLat
     }
 
     private fun drawImpl(canvas: Canvas) {
         super.draw(canvas)
+        if (frameWidth <= 0 || frameHeight <= 0) return
 
         results?.detections()?.forEach { detection ->
-            val originalImageWidth = outputWidth.toFloat()
-            val originalImageHeight = outputHeight.toFloat()
-
-            val croppedImageSize = minOf(originalImageWidth, originalImageHeight)
-
-            val modelInputSize = 384f
-
-            val boxRect = RectF(
-                detection.boundingBox().left,
-                detection.boundingBox().top,
-                detection.boundingBox().right,
-                detection.boundingBox().bottom
+            val bb = detection.boundingBox()
+            val inFrame = FrameMapping.modelBoxToFrame(
+                FrameMapping.Box(bb.left, bb.top, bb.right, bb.bottom),
+                frameWidth, frameHeight, rotation90
             )
-
-            val modelToCropScale = croppedImageSize / modelInputSize
-            boxRect.left *= modelToCropScale
-            boxRect.right *= modelToCropScale
-            boxRect.top *= modelToCropScale
-            boxRect.bottom *= modelToCropScale
-
-            val cropOffsetX = (originalImageWidth - croppedImageSize) / 2f
-            val cropOffsetY = (originalImageHeight - croppedImageSize) / 2f
-            boxRect.offset(cropOffsetX, cropOffsetY)
-
-            val matrix = Matrix()
-            matrix.postRotate(
-                outputRotate.toFloat(),
-                originalImageWidth / 2f,
-                originalImageHeight / 2f
-            )
-            matrix.mapRect(boxRect)
-
-            boxRect.left *= scaleFactor
-            boxRect.right *= scaleFactor
-            boxRect.top *= scaleFactor
-            boxRect.bottom *= scaleFactor
-
-            boxRect.offset(previewLeft, previewTop)
-
-            val finalDrawableRect = boxRect
+            val rect = RectF(inFrame.left, inFrame.top, inFrame.right, inFrame.bottom)
+            frameToOverlay.mapRect(rect)
 
             // Label and box colour come from the class NAME (model metadata), not the index.
             val category = detection.categories()[0]
             val label = ClassColors.labelFor(category.categoryName(), category.index())
             boxPaint.color = ClassColors.colorFor(label, defaultBoxColor)
-            canvas.drawRect(finalDrawableRect, boxPaint)
+            canvas.drawRect(rect, boxPaint)
 
             val drawableText = label + " " + String.format("%.2f", category.score())
-
             textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
             val textHeight = bounds.height()
             val textWidth = textBackgroundPaint.measureText(drawableText)
 
-            val labelX = finalDrawableRect.left
-            val labelY = finalDrawableRect.top
-
             canvas.drawRect(
-                labelX,
-                labelY - textHeight - (BOUNDING_RECT_TEXT_PADDING * 2),
-                labelX + textWidth + (BOUNDING_RECT_TEXT_PADDING * 2),
-                labelY,
+                rect.left,
+                rect.top - textHeight - (BOUNDING_RECT_TEXT_PADDING * 2),
+                rect.left + textWidth + (BOUNDING_RECT_TEXT_PADDING * 2),
+                rect.top,
                 textBackgroundPaint
             )
             canvas.drawText(
                 drawableText,
-                labelX + BOUNDING_RECT_TEXT_PADDING,
-                labelY - BOUNDING_RECT_TEXT_PADDING,
+                rect.left + BOUNDING_RECT_TEXT_PADDING,
+                rect.top - BOUNDING_RECT_TEXT_PADDING,
                 textPaint
             )
         }
     }
 
     /**
-     * Sets the object detection results to be displayed. This function also receives the
-     * dimensions and rotation of the input image. It calculates the `scaleFactor` needed
-     * to map the detection results from the image's coordinate system to the view's
-     * coordinate system and then triggers a redraw by calling `invalidate()`.
+     * @param frameW,frameH size of the un-rotated frame the detector input was cut from
+     * @param rotation clockwise manual rotation (0/90/180/270) applied to that frame
+     * @param frameToOverlay maps frame coordinates to this view's coordinates
      */
     fun setResults(
         detectionResults: ObjectDetectorResult,
-        outputHeight: Int,
-        outputWidth: Int,
-        imageRotation: Int
+        frameW: Int,
+        frameH: Int,
+        rotation: Int,
+        frameToOverlay: Matrix
     ) {
         results = detectionResults
-        this.outputWidth = outputWidth
-        this.outputHeight = outputHeight
-        this.outputRotate = imageRotation
-
-        val rotatedWidthHeight = when (imageRotation) {
-            0, 180 -> Pair(outputWidth, outputHeight)
-            90, 270 -> Pair(outputHeight, outputWidth)
-            else -> return
-        }
-
-        scaleFactor = when (runningMode) {
-            RunningMode.IMAGE,
-            RunningMode.VIDEO,
-            RunningMode.LIVE_STREAM -> { // Terapkan logika yang sama untuk semua mode
-                min(
-                    previewWidth * 1f / rotatedWidthHeight.first,
-                    previewHeight * 1f / rotatedWidthHeight.second
-                )
-            }
-        }
+        frameWidth = frameW
+        frameHeight = frameH
+        rotation90 = rotation
+        this.frameToOverlay.set(frameToOverlay)
         invalidate()
     }
 
     companion object {
         private const val BOUNDING_RECT_TEXT_PADDING = 8
     }
-
-    /**
-     * Stores the layout dimensions and position of the camera preview. This is essential for
-     * correctly positioning the drawn bounding boxes on the screen, aligning them with the
-     * underlying camera image.
-     */
-    fun setPreviewLayout(left: Int, top: Int, width: Int, height: Int) {
-        previewLeft = left.toFloat()
-        previewTop = top.toFloat()
-        previewWidth = width
-        previewHeight = height
-    }
-
 }

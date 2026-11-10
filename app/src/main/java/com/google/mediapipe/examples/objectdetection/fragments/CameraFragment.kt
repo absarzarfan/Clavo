@@ -22,7 +22,11 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.SeekBar
 import android.widget.Toast
+import com.google.mediapipe.examples.objectdetection.databinding.InfoBottomSheetBinding
+import com.google.mediapipe.examples.objectdetection.utils.DetectionPrefs
+import com.google.mediapipe.examples.objectdetection.utils.ThresholdScale
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -253,7 +257,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setModel("Camera", initial.displayName) // TEMP-ClavoLat
 
         // ViewModel is read here (Main, fragment attached), not from the IO thread.
-        val threshold = viewModel.currentThreshold
+        val threshold = DetectionPrefs.getThreshold(ctx, DetectionPrefs.MODE_CAMERA)
         val delegate = viewModel.currentDelegate
         val maxResults = viewModel.currentMaxResults
 
@@ -282,6 +286,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     // Wires the shared model picker; models are bound once they are loaded.
     private fun initBottomSheetControls() {
         val sheet = fragmentCameraBinding.bottomSheetLayout
+        initThresholdControl(sheet)
         modelSpinnerController = ModelSpinnerController(
             requireContext().applicationContext,
             sheet.spinnerModel,
@@ -296,6 +301,44 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                 backgroundExecutor.execute { objectDetectorHelper.changeModel(model.assetPath) }
                 _fragmentCameraBinding?.overlay?.clear()
             }
+        }
+    }
+
+    private fun thresholdText(v: Float) = String.format(java.util.Locale.US, "Ambang skor: %.2f", v)
+
+    // Score-threshold slider (0.05..0.90), saved per mode in SharedPreferences.
+    private fun initThresholdControl(sheet: InfoBottomSheetBinding) {
+        val saved = DetectionPrefs.getThreshold(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA)
+        sheet.thresholdSeekbar.max = ThresholdScale.STEPS
+        sheet.thresholdSeekbar.progress = ThresholdScale.toProgress(saved)
+        sheet.thresholdLabel.text = thresholdText(saved)
+        sheet.thresholdSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                sheet.thresholdLabel.text = thresholdText(ThresholdScale.fromProgress(progress))
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(bar: SeekBar?) {
+                applyThreshold(ThresholdScale.fromProgress(bar?.progress ?: return))
+            }
+        })
+    }
+
+    // Saves the threshold and rebuilds the detector with it.
+    private fun applyThreshold(value: Float) {
+        DetectionPrefs.setThreshold(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA, value)
+        Log.i("ClavoDet", "[Camera] scoreThreshold set to $value") // TEMP-ClavoDet
+        if (this::objectDetectorHelper.isInitialized &&
+            this::backgroundExecutor.isInitialized &&
+            !backgroundExecutor.isShutdown
+        ) {
+            backgroundExecutor.execute {
+                objectDetectorHelper.threshold = value
+                objectDetectorHelper.clearObjectDetector()
+                objectDetectorHelper.setupObjectDetector()
+            }
+            _fragmentCameraBinding?.overlay?.clear()
         }
     }
 

@@ -320,7 +320,7 @@ class ObjectDetectorHelper(
         if (runningMode != RunningMode.LIVE_STREAM) return
 
         // Preprocessing: Konversi ke RGB dan normalisasi
-        val inputSize = 384
+        val inputSize = com.google.mediapipe.examples.objectdetection.utils.FrameMapping.MODEL_INPUT_SIZE
         val normalizedBitmap = normalizeBitmap(bitmap, inputSize)
 
         // Update rotasi
@@ -336,7 +336,7 @@ class ObjectDetectorHelper(
     }
 
     private fun normalizeBitmap(bitmap: Bitmap, size: Int): Bitmap {
-        // Resize ke 384x384
+        // Resize to MODEL_INPUT_SIZE x MODEL_INPUT_SIZE (no-op when the caller already did)
         return Bitmap.createScaledBitmap(bitmap, size, size, true)
     }
 
