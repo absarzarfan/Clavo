@@ -1,0 +1,47 @@
+gambar: 153 | objek GT: 166 | label tak dikenal: 0
+
+=== skor >= 0.2, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[47  1  1  0]
+ [ 7 89  1  1]
+ [ 5  0 14  0]
+ [ 2  4  5  0]]
+mangga matang   TP=  47 FP=  14 FN=   2  P=0.770 R=0.959 F1=0.855
+mangga mentah   TP=  89 FP=   5 FN=   9  P=0.947 R=0.908 F1=0.927
+mangga busuk    TP=  14 FP=   7 FN=   5  P=0.667 R=0.737 F1=0.700
+macro P=0.795 R=0.868 F1=0.827 | akurasi (diagonal/total GT)=0.904 | akurasi klasifikasi (hanya yang terlokalisasi)=0.909
+
+=== skor >= 0.3, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[47  1  1  0]
+ [ 7 89  1  1]
+ [ 5  0 14  0]
+ [ 1  1  2  0]]
+mangga matang   TP=  47 FP=  13 FN=   2  P=0.783 R=0.959 F1=0.862
+mangga mentah   TP=  89 FP=   2 FN=   9  P=0.978 R=0.908 F1=0.942
+mangga busuk    TP=  14 FP=   4 FN=   5  P=0.778 R=0.737 F1=0.757
+macro P=0.846 R=0.868 F1=0.854 | akurasi (diagonal/total GT)=0.904 | akurasi klasifikasi (hanya yang terlokalisasi)=0.909
+
+=== skor >= 0.4, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[47  1  1  0]
+ [ 7 89  1  1]
+ [ 5  0 14  0]
+ [ 0  1  1  0]]
+mangga matang   TP=  47 FP=  12 FN=   2  P=0.797 R=0.959 F1=0.870
+mangga mentah   TP=  89 FP=   2 FN=   9  P=0.978 R=0.908 F1=0.942
+mangga busuk    TP=  14 FP=   3 FN=   5  P=0.824 R=0.737 F1=0.778
+macro P=0.866 R=0.868 F1=0.863 | akurasi (diagonal/total GT)=0.904 | akurasi klasifikasi (hanya yang terlokalisasi)=0.909
+
+=== skor >= 0.5, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[47  1  1  0]
+ [ 7 88  1  2]
+ [ 5  0 14  0]
+ [ 0  1  1  0]]
+mangga matang   TP=  47 FP=  12 FN=   2  P=0.797 R=0.959 F1=0.870
+mangga mentah   TP=  88 FP=   2 FN=  10  P=0.978 R=0.898 F1=0.936
+mangga busuk    TP=  14 FP=   3 FN=   5  P=0.824 R=0.737 F1=0.778
+macro P=0.866 R=0.865 F1=0.861 | akurasi (diagonal/total GT)=0.898 | akurasi klasifikasi (hanya yang terlokalisasi)=0.909
+
+file: v2_ringkasan.csv v2_cm_thr*.csv

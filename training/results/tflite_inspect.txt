@@ -1,0 +1,90 @@
+
+### 1760467664_Manggo_efficientdet_lite2_V3.tflite
+ukuran_byte: 7392627 | MiB: 7.05
+sha256: 1d2ba0bbfc30ff1db98764c8c78885ce90848423e8bf807e33aaa3c393afbb6f
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['mangga matang', 'mangga mentah', 'mangga busuk']
+
+### 1760467860_cengkeh_efficientdet_lite2_V2.tflite
+ukuran_byte: 7390808 | MiB: 7.05
+sha256: 3263ad49eab9c99c67a340a74c9ac3909ec9275629d528b03b2efad629704c3f
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['Cengkeh Matang', 'Cengkeh Mentah']
+
+### 1760468792_Matoa_efficientdet_lite2.tflite
+ukuran_byte: 7390804 | MiB: 7.05
+sha256: 893f253ce0e00bb2d195407260331de67edc323631195adf44dc540ac6170874
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['Matoa Matang', 'Matoa Mentah']
+
+### efficientdet_lite2_mangga_v1 (1).tflite
+ukuran_byte: 7392667 | MiB: 7.05
+sha256: 2fb03d558ca23b55e7246ca0483ea2d6b407fd5643491f0c6b562b04572f6b97
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['mangga matang', 'mangga mentah', 'mangga busuk']
+
+### efficientdet_lite2_mangga_v1.tflite
+ukuran_byte: 7392667 | MiB: 7.05
+sha256: 2fb03d558ca23b55e7246ca0483ea2d6b407fd5643491f0c6b562b04572f6b97
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['mangga matang', 'mangga mentah', 'mangga busuk']
+
+### efficientdet_lite2_mangga_v2.tflite
+ukuran_byte: 7392667 | MiB: 7.05
+sha256: 0c6b3cf47daf73b87bb1f6343aa05f8cb028c741eb292039ec3eead1dce89962
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['mangga matang', 'mangga mentah', 'mangga busuk']
+
+### efficientdet_lite2_cengkeh_V2.tflite
+ukuran_byte: 7390808 | MiB: 7.05
+sha256: 3263ad49eab9c99c67a340a74c9ac3909ec9275629d528b03b2efad629704c3f
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['Cengkeh Matang', 'Cengkeh Mentah']
+
+### efficientdet_lite2_mangga_v1.tflite
+ukuran_byte: 7392667 | MiB: 7.05
+sha256: 2fb03d558ca23b55e7246ca0483ea2d6b407fd5643491f0c6b562b04572f6b97
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['mangga matang', 'mangga mentah', 'mangga busuk']
+
+### efficientdet_lite2_mangga_v2.tflite
+ukuran_byte: 7392667 | MiB: 7.05
+sha256: 0c6b3cf47daf73b87bb1f6343aa05f8cb028c741eb292039ec3eead1dce89962
+input : [1, 448, 448, 3] uint8 skala/zero-point: (0.0078125, 127)
+output: [1, 25] float32
+output: [1, 25, 4] float32
+output: [1] float32
+output: [1, 25] float32
+label tertanam: ['mangga matang', 'mangga mentah', 'mangga busuk']

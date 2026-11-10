@@ -1,0 +1,7 @@
+Folder: /home/absar_zarfan/clavo/dataset
+
+split     gambar   xml  objek   objek per kelas | gambar per kelas
+train       1073  1073   1164   matang=441, mentah=542, busuk=181 | matang=405, mentah=501, busuk=181
+valid        307   307    323   matang=101, mentah=181, busuk=41 | matang=98, mentah=172, busuk=41
+test         153   153    166   matang=49, mentah=98, busuk=19 | matang=49, mentah=87, busuk=19
+TOTAL       1533         1653   matang=591, mentah=821, busuk=241 | matang=552, mentah=760, busuk=241
