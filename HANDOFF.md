@@ -40,3 +40,10 @@ JANGAN
 ## SISA (butuh HP dan webcam)
 - Uji posisi kotak di 4 rotasi, slider threshold, status cabut-colok, latensi (CSV), TC-01..TC-11, 30 sesi, UAT.
 - Golden Cengkeh: jalankan CengkehRegressionTest sekali di perangkat, salin golden ke androidTest/assets.
+
+## UPDATE 11 Nov 2026 (PC)
+- Build PC OK (41 tes). Evaluasi v1/v2 di PC identik dengan laptop (training/results/pc).
+- V3 tim pada test resmi apip (45 gambar): akurasi 43/45 = 95,56%, macro-F1 0,954 (metrik ketat); klaim lama direproduksi. V3 pada test OnieU (153): F1 0,758, akurasi 0,801 (ambang 0,3).
+- v1/v2 pada test resmi apip: akurasi 0,600/0,644 (ambang 0,3): domain gap besar.
+- Dataset apip ekspor v2: 1734/90/45 gambar, 3747 objek. Pembagian ulang 60/20/20 notebook tim: 84,7% gambar uji punya saudara augmentasi di data latih.
+- Belum terbukti: latensi 63,32 ms, "dikumpulkan di Batam", log pelatihan V3.
