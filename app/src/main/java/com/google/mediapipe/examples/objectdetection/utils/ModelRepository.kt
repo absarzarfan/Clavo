@@ -17,9 +17,9 @@ object ModelRepository {
     private const val KEY_SELECTED_MODEL = "selected_model_file"
 
     data class ModelInfo(
-        /** File name inside assets/models/, e.g. "efficientdet_lite2_mangga_v1.tflite". */
+        /** File name inside assets/models/, e.g. "efficientdet_lite2_mangga_v2.tflite". */
         val fileName: String,
-        /** Human readable name, e.g. "Mangga (Lite2 v1)". */
+        /** Human readable name, e.g. "Mangga (Lite2 v2)". */
         val displayName: String
     ) {
         /** Path to hand to MediaPipe (relative to the assets root). */
@@ -55,8 +55,20 @@ object ModelRepository {
         } catch (e: Exception) {
             null
         }
-        return available.firstOrNull { it.fileName == saved } ?: available.firstOrNull()
+        val picked = pickInitialModel(saved, available)
+        if (saved != null && picked?.fileName != saved) {
+            Log.w(TAG, "Saved model '$saved' is no longer bundled; using ${picked?.fileName}")
+        }
+        return picked
     }
+
+    /**
+     * Pure part of [resolveInitialModel]: the saved model if it is still bundled, otherwise the
+     * first available model (e.g. a saved "efficientdet_lite2_mangga_v1.tflite" that was moved
+     * to models_archive/), or null if nothing is bundled.
+     */
+    fun pickInitialModel(savedFileName: String?, available: List<ModelInfo>): ModelInfo? =
+        available.firstOrNull { it.fileName == savedFileName } ?: available.firstOrNull()
 
     fun saveSelectedModel(context: Context, fileName: String) {
         try {
@@ -67,7 +79,7 @@ object ModelRepository {
         }
     }
 
-    /** "efficientdet_lite2_mangga_v1.tflite" -> "Mangga (Lite2 v1)". */
+    /** "efficientdet_lite2_mangga_v2.tflite" -> "Mangga (Lite2 v2)". */
     fun displayNameFor(fileName: String): String {
         val base = fileName.removeSuffix(MODEL_EXTENSION).removeSuffix(MODEL_EXTENSION.uppercase())
         val match = NAME_PATTERN.matchEntire(base)

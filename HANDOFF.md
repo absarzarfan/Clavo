@@ -4,7 +4,8 @@ REPO
 - Branch kerja: feature/clavo-mangga-ta. Commit lokal: 63f5f64, 370671b, 71915f1, 75309b8, 48fe66d, f2d3db4, ditambah commit training/handoff ini.
 
 MODEL
-- Mangga v1 (default): AP50 0.857. v2: AP 0.609, AP50 0.796, busuk 0.502. Hasil seri, tes lapangan menentukan.
+- Mangga v1: AP50 0.857. v2: AP 0.609, AP50 0.796, busuk 0.502. Hasil seri, tes lapangan menentukan.
+- APK kini hanya membawa mangga v2 (default mangga). Berkas v1 dipindah ke models_archive/ (tidak ikut APK; ukuran dan SHA-256 di models_archive/README.md). Preferensi model tersimpan yang sudah tidak ada jatuh ke model pertama yang tersedia.
 - Cengkeh V2: bawaan tim, belum dilatih ulang. Dataset asalnya belum dikonfirmasi.
 - V3 tim ("Manggo_efficientdet_lite2_V3.tflite", catatan lama: 95.56% / 63.32 ms): bukti mentah belum ada. Periksa input, konfigurasi, dan kebocoran data (augmentasi lalu split acak).
 
