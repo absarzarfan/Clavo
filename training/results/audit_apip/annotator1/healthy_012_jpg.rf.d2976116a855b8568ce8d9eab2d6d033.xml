@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>healthy_012_jpg.rf.d2976116a855b8568ce8d9eab2d6d033.jpg</filename>
+	<path>C:\dev\audit_apip\images\healthy_012_jpg.rf.d2976116a855b8568ce8d9eab2d6d033.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga mentah</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>63</xmin>
+			<ymin>35</ymin>
+			<xmax>534</xmax>
+			<ymax>591</ymax>
+		</bndbox>
+	</object>
+</annotation>

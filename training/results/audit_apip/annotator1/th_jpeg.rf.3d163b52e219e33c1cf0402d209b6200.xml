@@ -1,0 +1,38 @@
+<annotation>
+	<folder>images</folder>
+	<filename>th_jpeg.rf.3d163b52e219e33c1cf0402d209b6200.jpg</filename>
+	<path>C:\dev\audit_apip\images\th_jpeg.rf.3d163b52e219e33c1cf0402d209b6200.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>36</xmin>
+			<ymin>32</ymin>
+			<xmax>380</xmax>
+			<ymax>341</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>147</xmin>
+			<ymin>177</ymin>
+			<xmax>592</xmax>
+			<ymax>543</ymax>
+		</bndbox>
+	</object>
+</annotation>

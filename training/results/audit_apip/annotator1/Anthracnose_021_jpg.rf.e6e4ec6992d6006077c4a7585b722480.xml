@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>Anthracnose_021_jpg.rf.e6e4ec6992d6006077c4a7585b722480.jpg</filename>
+	<path>C:\dev\audit_apip\images\Anthracnose_021_jpg.rf.e6e4ec6992d6006077c4a7585b722480.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga busuk</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>16</xmin>
+			<ymin>10</ymin>
+			<xmax>631</xmax>
+			<ymax>624</ymax>
+		</bndbox>
+	</object>
+</annotation>

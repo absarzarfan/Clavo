@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>OIP-5-_jpeg.rf.5cfd39348451f796a945d4d68df542cf.jpg</filename>
+	<path>C:\dev\audit_apip\images\OIP-5-_jpeg.rf.5cfd39348451f796a945d4d68df542cf.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>94</xmin>
+			<ymin>102</ymin>
+			<xmax>505</xmax>
+			<ymax>596</ymax>
+		</bndbox>
+	</object>
+</annotation>

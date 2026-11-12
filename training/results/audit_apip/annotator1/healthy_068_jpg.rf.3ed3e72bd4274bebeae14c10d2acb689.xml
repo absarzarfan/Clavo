@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>healthy_068_jpg.rf.3ed3e72bd4274bebeae14c10d2acb689.jpg</filename>
+	<path>C:\dev\audit_apip\images\healthy_068_jpg.rf.3ed3e72bd4274bebeae14c10d2acb689.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>52</xmin>
+			<ymin>68</ymin>
+			<xmax>589</xmax>
+			<ymax>618</ymax>
+		</bndbox>
+	</object>
+</annotation>
