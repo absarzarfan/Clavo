@@ -1,0 +1,7 @@
+﻿Folder: C:\dev\dataset_apip
+
+split     gambar   xml  objek   objek per kelas | gambar per kelas
+train       1734  1734   3608   matang=893, mentah=2316, busuk=399 | matang=474, mentah=900, busuk=390
+valid         90    90     94   matang=30, mentah=29, busuk=35 | matang=26, mentah=28, busuk=35
+test          45    45     45   matang=11, mentah=16, busuk=18 | matang=11, mentah=15, busuk=18
+TOTAL       1869         3747   matang=934, mentah=2361, busuk=452 | matang=511, mentah=943, busuk=443

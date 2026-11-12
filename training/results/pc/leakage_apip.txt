@@ -1,0 +1,4 @@
+﻿gambar di train/ ekspor: 1734 | gambar sumber unik: 567 | rata-rata versi per sumber: 3.06
+pembagian: latih=1042 validasi=346 uji=346
+validasi: 300 dari 346 gambar (86.7%) punya "saudara" augmentasi dari gambar sumber yang sama di data latih
+uji: 293 dari 346 gambar (84.7%) punya "saudara" augmentasi dari gambar sumber yang sama di data latih

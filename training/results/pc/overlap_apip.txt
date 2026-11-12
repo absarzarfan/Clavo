@@ -1,0 +1,3 @@
+﻿gambar sumber unik: train=567 valid=88 test=45
+irisan test-train=1 | valid-train=2 | test-valid=2
+contoh irisan test-train: ['th-3-_jpeg']
