@@ -1,0 +1,25 @@
+KONFIGURASI: {'epochs': 20, 'batch': 4, 'seed': 42, 'dataset': '/home/it_-_absar_pc/clavo/dataset_apip', 'spec': 'efficientdet_lite2', 'train_whole_mo
+----------------------------------------------------------------------
+  epoch  1/20:  228 detik | det_loss 0.9030 | val_loss 0.4920
+  epoch  2/20:  179 detik | det_loss 0.5636 | val_loss 0.3871
+  epoch  3/20:  177 detik | det_loss 0.5182 | val_loss 0.3295
+  epoch  4/20:  177 detik | det_loss 0.4840 | val_loss 0.2563
+  epoch  5/20:  182 detik | det_loss 0.4606 | val_loss 0.2254
+  epoch  6/20:  176 detik | det_loss 0.4348 | val_loss 0.2226
+  epoch  7/20:  176 detik | det_loss 0.4201 | val_loss 0.2062
+  epoch  8/20:  175 detik | det_loss 0.4009 | val_loss 0.2993
+  epoch  9/20:  176 detik | det_loss 0.3872 | val_loss 0.2214
+  epoch 10/20:  178 detik | det_loss 0.3748 | val_loss 0.1878
+  epoch 11/20:  176 detik | det_loss 0.3522 | val_loss 0.1984
+  epoch 12/20:  175 detik | det_loss 0.3400 | val_loss 0.1874
+  epoch 13/20:  175 detik | det_loss 0.3358 | val_loss 0.1899
+  epoch 14/20:  174 detik | det_loss 0.3234 | val_loss 0.1973
+  epoch 15/20:  177 detik | det_loss 0.3126 | val_loss 0.1839
+  epoch 16/20:  175 detik | det_loss 0.3087 | val_loss 0.1831
+  epoch 17/20:  176 detik | det_loss 0.3050 | val_loss 0.1782
+  epoch 18/20:  175 detik | det_loss 0.3024 | val_loss 0.1768
+  epoch 19/20:  174 detik | det_loss 0.2943 | val_loss 0.1755
+  epoch 20/20:  178 detik | det_loss 0.3025 | val_loss 0.1768
+----------------------------------------------------------------------
+rata-rata 179 detik/epoch | epoch tersisa penuh: 0 | perkiraan sisa ±0 menit (belum termasuk ekspor dan evaluasi)
+STATUS: SELESAI (evaluasi tercetak di log)

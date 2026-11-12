@@ -1,0 +1,1 @@
+975a687f36601821a2f10ea166658f37f4d8e85055385fa1fffdd6593b608ee1  /home/it_-_absar_pc/clavo/out_apip/efficientdet_lite2_mangga_apip_r1.tflite
