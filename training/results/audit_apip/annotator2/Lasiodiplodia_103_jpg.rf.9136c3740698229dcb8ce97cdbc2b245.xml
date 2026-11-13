@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>Lasiodiplodia_103_jpg.rf.9136c3740698229dcb8ce97cdbc2b245.jpg</filename>
+	<path>C:\dev\audit_apip_annotator2\images\Lasiodiplodia_103_jpg.rf.9136c3740698229dcb8ce97cdbc2b245.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga busuk</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>12</xmin>
+			<ymin>29</ymin>
+			<xmax>616</xmax>
+			<ymax>614</ymax>
+		</bndbox>
+	</object>
+</annotation>

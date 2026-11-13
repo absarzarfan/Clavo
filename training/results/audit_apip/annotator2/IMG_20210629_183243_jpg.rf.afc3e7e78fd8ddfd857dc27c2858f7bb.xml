@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>IMG_20210629_183243_jpg.rf.afc3e7e78fd8ddfd857dc27c2858f7bb.jpg</filename>
+	<path>C:\dev\audit_apip_annotator2\images\IMG_20210629_183243_jpg.rf.afc3e7e78fd8ddfd857dc27c2858f7bb.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>640</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga mentah</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>80</xmin>
+			<ymin>64</ymin>
+			<xmax>577</xmax>
+			<ymax>473</ymax>
+		</bndbox>
+	</object>
+</annotation>
