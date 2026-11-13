@@ -1,0 +1,38 @@
+<annotation>
+	<folder>images</folder>
+	<filename>325020431_1119097929049475_5752670368773413538_n_jpg_bright_1-2_jpg.rf.63de5800065b1fb100d6a1d7f6a6b817.jpg</filename>
+	<path>C:\dev\audit_onieu\images\325020431_1119097929049475_5752670368773413538_n_jpg_bright_1-2_jpg.rf.63de5800065b1fb100d6a1d7f6a6b817.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>1080</width>
+		<height>1920</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>1</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>1</xmin>
+			<ymin>385</ymin>
+			<xmax>851</xmax>
+			<ymax>966</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>53</xmin>
+			<ymin>1071</ymin>
+			<xmax>939</xmax>
+			<ymax>1666</ymax>
+		</bndbox>
+	</object>
+</annotation>

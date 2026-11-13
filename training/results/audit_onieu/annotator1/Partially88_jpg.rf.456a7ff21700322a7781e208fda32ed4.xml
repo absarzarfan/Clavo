@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>Partially88_jpg.rf.456a7ff21700322a7781e208fda32ed4.jpg</filename>
+	<path>C:\dev\audit_onieu\images\Partially88_jpg.rf.456a7ff21700322a7781e208fda32ed4.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>568</xmin>
+			<ymin>596</ymin>
+			<xmax>1380</xmax>
+			<ymax>1918</ymax>
+		</bndbox>
+	</object>
+</annotation>

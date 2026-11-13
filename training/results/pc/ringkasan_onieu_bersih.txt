@@ -1,0 +1,6 @@
+== onieu_test_bersih_v1
+gambar: 127 | objek GT: 137 | label tak dikenal: 0
+macro P=0.792 R=0.805 F1=0.791 | akurasi (diagonal/total GT)=0.891 | akurasi klasifikasi (hanya yang terlokalisasi)=0.891
+== onieu_test_bersih_v2
+gambar: 127 | objek GT: 137 | label tak dikenal: 0
+macro P=0.768 R=0.764 F1=0.759 | akurasi (diagonal/total GT)=0.883 | akurasi klasifikasi (hanya yang terlokalisasi)=0.890

@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>Ripe214-Copy_jpg.rf.c688357447e0f28ab5001aca7ebb0842.jpg</filename>
+	<path>C:\dev\audit_onieu\images\Ripe214-Copy_jpg.rf.c688357447e0f28ab5001aca7ebb0842.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>624</xmin>
+			<ymin>596</ymin>
+			<xmax>1702</xmax>
+			<ymax>1263</ymax>
+		</bndbox>
+	</object>
+</annotation>

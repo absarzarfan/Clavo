@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>Ripe230_jpg.rf.5ea158a59c17d50e26014c23715b6477.jpg</filename>
+	<path>C:\dev\audit_onieu\images\Ripe230_jpg.rf.5ea158a59c17d50e26014c23715b6477.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>613</xmin>
+			<ymin>485</ymin>
+			<xmax>1780</xmax>
+			<ymax>1241</ymax>
+		</bndbox>
+	</object>
+</annotation>

@@ -1,0 +1,11 @@
+﻿PETUNJUK MELABELI (sekitar 30-40 menit)
+1. Beri kotak pada setiap buah mangga di gambar, lalu pilih satu kelas:
+   - mangga matang: kulit dominan kuning, oranye, atau kemerahan
+   - mangga mentah: kulit dominan hijau
+   - mangga busuk: tampak busuk atau rusak (bercak gelap atau cokelat luas, keriput, berjamur)
+2. Jika buah setengah hijau setengah kuning atau kamu ragu, pilih berdasarkan penilaianmu sendiri.
+3. Kerjakan sendiri. Jangan mencari label di tempat lain, jangan membuka folder lain,
+   dan jangan bertanya soal penilaian ke siapa pun sampai 50 gambar selesai.
+4. Tombol: W = buat kotak, D = gambar berikutnya, A = sebelumnya, Ctrl+S = simpan.
+   Nyalakan menu View > Auto Save mode.
+5. Setelah gambar ke-50: tekan Ctrl+S, lalu tutup jendela dengan tombol X.

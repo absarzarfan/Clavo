@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>IMG_20230116_105606_jpg.rf.ef6e2b330f3e46c6000e7c53d4312b52.jpg</filename>
+	<path>C:\dev\audit_onieu\images\IMG_20230116_105606_jpg.rf.ef6e2b330f3e46c6000e7c53d4312b52.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>3120</width>
+		<height>4160</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga mentah</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>559</xmin>
+			<ymin>658</ymin>
+			<xmax>2288</xmax>
+			<ymax>3772</ymax>
+		</bndbox>
+	</object>
+</annotation>

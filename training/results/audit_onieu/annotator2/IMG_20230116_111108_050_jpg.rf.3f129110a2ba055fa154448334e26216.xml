@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>img_022.jpg</filename>
+	<path>C:\labeler2\images\img_022.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>3120</width>
+		<height>4160</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>788</xmin>
+			<ymin>772</ymin>
+			<xmax>2174</xmax>
+			<ymax>2972</ymax>
+		</bndbox>
+	</object>
+</annotation>

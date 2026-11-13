@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>20230305_052029023_iOS_jpg.rf.bdb414a57d20ff4bd428a5cabc834675.jpg</filename>
+	<path>C:\dev\audit_onieu\images\20230305_052029023_iOS_jpg.rf.bdb414a57d20ff4bd428a5cabc834675.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>4032</width>
+		<height>3024</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>736</xmin>
+			<ymin>862</ymin>
+			<xmax>3656</xmax>
+			<ymax>2482</ymax>
+		</bndbox>
+	</object>
+</annotation>

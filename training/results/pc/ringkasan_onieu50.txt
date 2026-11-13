@@ -1,0 +1,12 @@
+== onieu50_asli_v1
+gambar: 50 | objek GT: 53 | label tak dikenal: 0
+macro P=0.905 R=0.854 F1=0.860 | akurasi (diagonal/total GT)=0.887 | akurasi klasifikasi (hanya yang terlokalisasi)=0.887
+== onieu50_asli_v2
+gambar: 50 | objek GT: 53 | label tak dikenal: 0
+macro P=0.875 R=0.891 F1=0.875 | akurasi (diagonal/total GT)=0.906 | akurasi klasifikasi (hanya yang terlokalisasi)=0.906
+== onieu50_konsensus_v1
+gambar: 50 | objek GT: 46 | label tak dikenal: 0
+macro P=0.853 R=0.902 F1=0.863 | akurasi (diagonal/total GT)=0.935 | akurasi klasifikasi (hanya yang terlokalisasi)=0.935
+== onieu50_konsensus_v2
+gambar: 50 | objek GT: 46 | label tak dikenal: 0
+macro P=0.837 R=0.958 F1=0.890 | akurasi (diagonal/total GT)=0.978 | akurasi klasifikasi (hanya yang terlokalisasi)=0.978

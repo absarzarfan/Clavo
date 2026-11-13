@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>Partially2ripe235_jpg.rf.2e26136e401b75a97f8da2e83adb4639.jpg</filename>
+	<path>C:\dev\audit_onieu\images\Partially2ripe235_jpg.rf.2e26136e401b75a97f8da2e83adb4639.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>602</xmin>
+			<ymin>285</ymin>
+			<xmax>1624</xmax>
+			<ymax>1574</ymax>
+		</bndbox>
+	</object>
+</annotation>

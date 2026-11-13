@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>IMG_20210703_160746_jpg.rf.4505af0593bb44304dc76f6b1da4999f.jpg</filename>
+	<path>C:\dev\audit_onieu\images\IMG_20210703_160746_jpg.rf.4505af0593bb44304dc76f6b1da4999f.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>592</width>
+		<height>399</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga busuk</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>49</xmin>
+			<ymin>36</ymin>
+			<xmax>545</xmax>
+			<ymax>369</ymax>
+		</bndbox>
+	</object>
+</annotation>

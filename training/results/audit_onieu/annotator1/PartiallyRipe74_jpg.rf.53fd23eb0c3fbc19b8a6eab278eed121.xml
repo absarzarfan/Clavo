@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>PartiallyRipe74_jpg.rf.53fd23eb0c3fbc19b8a6eab278eed121.jpg</filename>
+	<path>C:\dev\audit_onieu\images\PartiallyRipe74_jpg.rf.53fd23eb0c3fbc19b8a6eab278eed121.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga busuk</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>746</xmin>
+			<ymin>841</ymin>
+			<xmax>1702</xmax>
+			<ymax>1541</ymax>
+		</bndbox>
+	</object>
+</annotation>

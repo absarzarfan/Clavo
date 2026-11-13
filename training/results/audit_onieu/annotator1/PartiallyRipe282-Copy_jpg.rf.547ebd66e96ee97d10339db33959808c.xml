@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>PartiallyRipe282-Copy_jpg.rf.547ebd66e96ee97d10339db33959808c.jpg</filename>
+	<path>C:\dev\audit_onieu\images\PartiallyRipe282-Copy_jpg.rf.547ebd66e96ee97d10339db33959808c.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga matang</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>724</xmin>
+			<ymin>741</ymin>
+			<xmax>1935</xmax>
+			<ymax>1452</ymax>
+		</bndbox>
+	</object>
+</annotation>

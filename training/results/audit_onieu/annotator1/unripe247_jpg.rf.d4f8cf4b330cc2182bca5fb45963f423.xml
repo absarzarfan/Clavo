@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>unripe247_jpg.rf.d4f8cf4b330cc2182bca5fb45963f423.jpg</filename>
+	<path>C:\dev\audit_onieu\images\unripe247_jpg.rf.d4f8cf4b330cc2182bca5fb45963f423.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>2448</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga mentah</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>791</xmin>
+			<ymin>796</ymin>
+			<xmax>1557</xmax>
+			<ymax>1929</ymax>
+		</bndbox>
+	</object>
+</annotation>

@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>20230305_061725228_iOS_jpg.rf.ad3706cbb823007fd5cd1d11b6a33f63.jpg</filename>
+	<path>C:\dev\audit_onieu\images\20230305_061725228_iOS_jpg.rf.ad3706cbb823007fd5cd1d11b6a33f63.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>4032</width>
+		<height>3024</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga busuk</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>796</xmin>
+			<ymin>682</ymin>
+			<xmax>3396</xmax>
+			<ymax>2302</ymax>
+		</bndbox>
+	</object>
+</annotation>

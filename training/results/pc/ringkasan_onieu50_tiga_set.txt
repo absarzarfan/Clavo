@@ -1,0 +1,6 @@
+== onieu50_konsensus3_v1
+gambar: 50 | objek GT: 52 | label tak dikenal: 0
+macro P=0.927 R=0.886 F1=0.899 | akurasi (diagonal/total GT)=0.923 | akurasi klasifikasi (hanya yang terlokalisasi)=0.923
+== onieu50_konsensus3_v2
+gambar: 50 | objek GT: 52 | label tak dikenal: 0
+macro P=0.929 R=0.958 F1=0.943 | akurasi (diagonal/total GT)=0.981 | akurasi klasifikasi (hanya yang terlokalisasi)=0.981

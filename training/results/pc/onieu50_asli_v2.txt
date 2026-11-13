@@ -1,0 +1,52 @@
+progres 10 gambar, 16 detik
+progres 20 gambar, 33 detik
+progres 30 gambar, 50 detik
+progres 40 gambar, 65 detik
+progres 50 gambar, 81 detik
+gambar: 50 | objek GT: 53 | label tak dikenal: 0
+
+=== skor >= 0.2, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[15  0  0  0]
+ [ 3 26  0  0]
+ [ 2  0  7  0]
+ [ 0  0  2  0]]
+mangga matang   TP=  15 FP=   5 FN=   0  P=0.750 R=1.000 F1=0.857
+mangga mentah   TP=  26 FP=   0 FN=   3  P=1.000 R=0.897 F1=0.945
+mangga busuk    TP=   7 FP=   2 FN=   2  P=0.778 R=0.778 F1=0.778
+macro P=0.843 R=0.891 F1=0.860 | akurasi (diagonal/total GT)=0.906 | akurasi klasifikasi (hanya yang terlokalisasi)=0.906
+
+=== skor >= 0.3, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[15  0  0  0]
+ [ 3 26  0  0]
+ [ 2  0  7  0]
+ [ 0  0  1  0]]
+mangga matang   TP=  15 FP=   5 FN=   0  P=0.750 R=1.000 F1=0.857
+mangga mentah   TP=  26 FP=   0 FN=   3  P=1.000 R=0.897 F1=0.945
+mangga busuk    TP=   7 FP=   1 FN=   2  P=0.875 R=0.778 F1=0.824
+macro P=0.875 R=0.891 F1=0.875 | akurasi (diagonal/total GT)=0.906 | akurasi klasifikasi (hanya yang terlokalisasi)=0.906
+
+=== skor >= 0.4, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[15  0  0  0]
+ [ 3 26  0  0]
+ [ 2  0  7  0]
+ [ 0  0  0  0]]
+mangga matang   TP=  15 FP=   5 FN=   0  P=0.750 R=1.000 F1=0.857
+mangga mentah   TP=  26 FP=   0 FN=   3  P=1.000 R=0.897 F1=0.945
+mangga busuk    TP=   7 FP=   0 FN=   2  P=1.000 R=0.778 F1=0.875
+macro P=0.917 R=0.891 F1=0.893 | akurasi (diagonal/total GT)=0.906 | akurasi klasifikasi (hanya yang terlokalisasi)=0.906
+
+=== skor >= 0.5, IoU >= 0.5 ===
+baris=aktual, kolom=prediksi; urutan: ['mangga matang', 'mangga mentah', 'mangga busuk', 'tidak terdeteksi/latar']
+[[15  0  0  0]
+ [ 3 26  0  0]
+ [ 2  0  7  0]
+ [ 0  0  0  0]]
+mangga matang   TP=  15 FP=   5 FN=   0  P=0.750 R=1.000 F1=0.857
+mangga mentah   TP=  26 FP=   0 FN=   3  P=1.000 R=0.897 F1=0.945
+mangga busuk    TP=   7 FP=   0 FN=   2  P=1.000 R=0.778 F1=0.875
+macro P=0.917 R=0.891 F1=0.893 | akurasi (diagonal/total GT)=0.906 | akurasi klasifikasi (hanya yang terlokalisasi)=0.906
+
+file: onieu50_asli_v2_ringkasan.csv onieu50_asli_v2_cm_thr*.csv

@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>M2-78-_jpg_bright_1-3_jpg.rf.686bd58cbacfb8eff699a12af0d1a457.jpg</filename>
+	<path>C:\dev\audit_onieu\images\M2-78-_jpg_bright_1-3_jpg.rf.686bd58cbacfb8eff699a12af0d1a457.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>1706</width>
+		<height>960</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mangga busuk</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>661</xmin>
+			<ymin>191</ymin>
+			<xmax>1130</xmax>
+			<ymax>691</ymax>
+		</bndbox>
+	</object>
+</annotation>
