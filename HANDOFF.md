@@ -23,7 +23,9 @@
 
 ## HASIL EVALUASI
 - Laptop: training/results. PC: training/results/pc (v1/v2 identik dengan laptop).
-- Label audit (anotator 1, anotator 2, kappa 3 arah, rincian konsensus): training/results/audit_apip.
+- Hasil terkini: training/results/audit_apip, training/results/audit_onieu, dan training/results/pc.
+- Skrip (training/): eval_cm_fast.py (evaluasi), kappa3.py, onieu_leak_check.py, onieu_bersih.py.
+- Label audit apip (anotator 1, 2, 3, kappa 3 arah, rincian konsensus): training/results/audit_apip.
 - Ringkasan konsensus bersih: training/results/pc/ringkasan_konsensus_bersih.txt.
 - Dataset apip ekspor v2: 1734/90/45 gambar, 3747 objek. Pembagian ulang 60/20/20 notebook tim: 84,7% gambar uji punya saudara augmentasi di data latih (kebocoran).
 
@@ -34,7 +36,10 @@
 
 ## AUDIT LABEL
 - Audit OnieU (50 gambar, training/results/audit_onieu): kappa 0,788 (asli-penulis), 0,845 (asli-rekan independen), 0,909 (penulis-rekan); konsensus 52 objek.
-- Audit apip (45 gambar): tiga set label, dua di antaranya milik penulis sehingga tidak independen.
+- Audit apip (45 gambar) kini punya penilai independen: rekan, buta, gambar dianonimkan (training/results/audit_apip/annotator3). Sesi kedua penulis (annotator2) tidak dipakai sebagai penilai.
+- Kappa apip: asli-penulis 0,833; asli-rekan 0,933; penulis-rekan 0,903. Konsensus tiga set (asli, penulis, rekan): 47 objek.
+- Akurasi pada konsensus tiga set: V3 dan r1 0,936 (44/47); tanpa gambar mirip data latih 0,952 (41 gambar) dan 0,947 (37 gambar). v1 0,596, v2 0,617.
+- README di audit_apip dan audit_onieu menjelaskan penamaan berkas.
 
 ## ALUR KERJA
 - Pelatihan dan evaluasi di PC (RTX 4060 8 GB); uji Android dan webcam di laptop.
