@@ -1,0 +1,24 @@
+== apip_konsindep_v1
+gambar: 45 | objek GT: 47 | label tak dikenal: 0
+macro P=0.759 R=0.654 F1=0.559 | akurasi (diagonal/total GT)=0.596 | akurasi klasifikasi (hanya yang terlokalisasi)=0.609
+== apip_konsindep_v2
+gambar: 45 | objek GT: 47 | label tak dikenal: 0
+macro P=0.619 R=0.672 F1=0.580 | akurasi (diagonal/total GT)=0.617 | akurasi klasifikasi (hanya yang terlokalisasi)=0.617
+== apip_konsindep_V3
+gambar: 45 | objek GT: 47 | label tak dikenal: 0
+macro P=0.972 R=0.929 F1=0.949 | akurasi (diagonal/total GT)=0.936 | akurasi klasifikasi (hanya yang terlokalisasi)=1.000
+== apip_konsindep_r1
+gambar: 45 | objek GT: 47 | label tak dikenal: 0
+macro P=0.972 R=0.929 F1=0.949 | akurasi (diagonal/total GT)=0.936 | akurasi klasifikasi (hanya yang terlokalisasi)=1.000
+== apip_konsindep_bersih4_V3
+gambar: 41 | objek GT: 42 | label tak dikenal: 0
+macro P=0.967 R=0.939 F1=0.952 | akurasi (diagonal/total GT)=0.952 | akurasi klasifikasi (hanya yang terlokalisasi)=1.000
+== apip_konsindep_bersih4_r1
+gambar: 41 | objek GT: 42 | label tak dikenal: 0
+macro P=0.967 R=0.939 F1=0.952 | akurasi (diagonal/total GT)=0.952 | akurasi klasifikasi (hanya yang terlokalisasi)=1.000
+== apip_konsindep_bersih8_V3
+gambar: 37 | objek GT: 38 | label tak dikenal: 0
+macro P=0.967 R=0.939 F1=0.952 | akurasi (diagonal/total GT)=0.947 | akurasi klasifikasi (hanya yang terlokalisasi)=1.000
+== apip_konsindep_bersih8_r1
+gambar: 37 | objek GT: 38 | label tak dikenal: 0
+macro P=0.967 R=0.939 F1=0.952 | akurasi (diagonal/total GT)=0.947 | akurasi klasifikasi (hanya yang terlokalisasi)=1.000
