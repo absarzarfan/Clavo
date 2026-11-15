@@ -308,7 +308,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                 !backgroundExecutor.isShutdown
             ) {
                 backgroundExecutor.execute { objectDetectorHelper.changeModel(model.assetPath) }
-                _fragmentCameraBinding?.overlay?.clear()
+                _fragmentCameraBinding?.overlay?.clear("ganti model")
             }
         }
     }
@@ -327,14 +327,18 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         btn.minWidth = Math.ceil(
             (btn.paint.measureText("Putar 270°") + btn.paddingLeft + btn.paddingRight + 2f).toDouble()
         ).toInt()
+        // Layout listeners fire in the middle of a layout pass, when the bottom sheet has not yet
+        // been moved into place by its behaviour (its top is still the raw layout position), so
+        // they must not read the sheet themselves: they only schedule an update that runs after
+        // the pass (scheduleTransformUpdate).
         val listener = View.OnLayoutChangeListener { _, l, t, r, bt, ol, ot, or2, ob ->
-            if (r - l != or2 - ol || bt - t != ob - ot) applyRotationTransform()
+            if (r - l != or2 - ol || bt - t != ob - ot) scheduleTransformUpdate()
         }
         b.webcamContainer.addOnLayoutChangeListener(listener)
         // The visible area ends at the top of the bottom sheet: follow it when it moves or resizes.
         val sheet = b.bottomSheetLayout.root
         sheet.addOnLayoutChangeListener { _, _, t, _, bt, _, ot, _, ob ->
-            if (t != ot || bt != ob) applyRotationTransform()
+            if (t != ot || bt != ob) scheduleTransformUpdate()
         }
         com.google.android.material.bottomsheet.BottomSheetBehavior.from(sheet).setBottomSheetCallback(
             object : com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback() {
@@ -343,6 +347,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             }
         )
         applyRotationTransform()
+        scheduleTransformUpdate() // start/restore: the first real values exist only after the first layout
         if (GeoLog.enabled) { // TEMP-ClavoGeo
             b.root.post { geoSnapshot("awal") } // TEMP-ClavoGeo
             b.root.postDelayed(geoTicker, 5000L) // TEMP-ClavoGeo
@@ -357,7 +362,8 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             Log.i("ClavoDet", "[Camera] manual rotation=$rot") // TEMP-ClavoDet
             LatencyRecorder.setRotation("Camera", rot) // TEMP-ClavoLat
             applyRotationTransform()
-            b.overlay.clear()
+            scheduleTransformUpdate() // the new label re-lays out the sheet: re-apply once it settles
+            b.overlay.clear("klik Putar")
             b.root.post { geoSnapshot("sudut berubah") } // TEMP-ClavoGeo
         }
     }
@@ -376,11 +382,14 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         val sheet = b.bottomSheetLayout.root // TEMP-ClavoGeo
         val state = try { "state=" + com.google.android.material.bottomsheet.BottomSheetBehavior.from(sheet).state } catch (e: Exception) { "state=?" } // TEMP-ClavoGeo
         val c = b.webcamContainer // TEMP-ClavoGeo
-        val visibleH = if (sheet.height > 0) sheet.top - c.top else c.height // TEMP-ClavoGeo
+        val visibleH = ContainerTransform.resolveVisibleHeight(c.height, c.top, sheet.top, sheet.height).height // TEMP-ClavoGeo
         val t = ContainerTransform.compute(c.width, c.height, visibleH, cameraRotation) // TEMP-ClavoGeo
         val transformState = "container final transform: rotation=${c.rotation} scale=${c.scaleX}/${c.scaleY} pivot=${c.pivotX},${c.pivotY} " + // TEMP-ClavoGeo
             "translation=${c.translationX},${c.translationY} clipBounds=${c.clipBounds} visibleH=$visibleH(sheet.top=${sheet.top} - container.top=${c.top}) " + // TEMP-ClavoGeo
+            "container alpha=${c.alpha} visibility=${c.visibility} layerType=${c.layerType} clipChildren=${(c as? android.view.ViewGroup)?.clipChildren} " + // TEMP-ClavoGeo
             "expected(ContainerTransform)=rot ${t.rotation} scale ${t.scale} pivot ${t.pivotX},${t.pivotY} clip ${t.clipRight}x${t.clipBottom}" // TEMP-ClavoGeo
+        geoCheck("snapshot $reason") // TEMP-ClavoGeo
+        if (GeoLog.enabled) Log.i(GeoLog.TAG, GeoLog.drainStats()) // TEMP-ClavoGeo
         GeoLog.snapshot(reason, cameraRotation, c, b.viewFinder, b.overlay, b.overlay.geoState() + " | " + transformState, sheet, state) // TEMP-ClavoGeo
     } // TEMP-ClavoGeo
 
@@ -388,12 +397,19 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     // part above the bottom sheet) and, for 90/270, shrinks it so the rotated visible area still
     // fits; drawing is clipped to the visible area. Boxes are drawn inside the container, so
     // they rotate with the preview. The maths lives in ContainerTransform (unit tested).
+    // The ONLY place that computes and installs the container transform. It always reads the
+    // latest container/sheet values at call time. Callers: Putar click, restore at start,
+    // BottomSheetCallback (after the behaviour has moved the sheet) and, via
+    // scheduleTransformUpdate(), the layout listeners (after the layout pass).
     private fun applyRotationTransform() {
         val bind = _fragmentCameraBinding ?: return
         val c = bind.webcamContainer
         val sheet = bind.bottomSheetLayout.root
-        val visibleH = if (sheet.height > 0) sheet.top - c.top else c.height
-        val t = ContainerTransform.compute(c.width, c.height, visibleH, cameraRotation)
+        val vis = ContainerTransform.resolveVisibleHeight(c.height, c.top, sheet.top, sheet.height)
+        if (vis.fallback && c.height > 0 && GeoLog.enabled) { // TEMP-ClavoGeo
+            Log.e(GeoLog.TAG, "FALLBACK visibleH=${vis.height}: sheet.top=${sheet.top} sheet.height=${sheet.height} container.top=${c.top} container.height=${c.height}") // TEMP-ClavoGeo
+        } // TEMP-ClavoGeo
+        val t = ContainerTransform.compute(c.width, c.height, vis.height, cameraRotation)
         c.pivotX = t.pivotX
         c.pivotY = t.pivotY
         c.rotation = t.rotation
@@ -402,7 +418,50 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         c.translationX = t.translationX
         c.translationY = t.translationY
         c.clipBounds = android.graphics.Rect(t.clipLeft, t.clipTop, t.clipRight, t.clipBottom)
+        // Redraw explicitly after the transform/clip changed (the boxes are in an overlay child
+        // whose display list is only re-recorded when it is invalidated).
+        bind.overlay.invalidate()
+        c.invalidate()
+        GeoLog.noteInvalidateApply() // TEMP-ClavoGeo
+        if (GeoLog.enabled) c.post { geoCheck("setelah apply") } // TEMP-ClavoGeo
     }
+
+    private var transformUpdatePosted = false
+
+    // Runs applyRotationTransform() after the current layout pass instead of during it.
+    private fun scheduleTransformUpdate() {
+        val root = _fragmentCameraBinding?.root ?: return
+        if (transformUpdatePosted) return
+        transformUpdatePosted = true
+        root.post {
+            transformUpdatePosted = false
+            applyRotationTransform()
+        }
+    }
+
+    // TEMP-ClavoGeo: compares the installed container transform with what ContainerTransform
+    // gives for the current sheet/container state. Only with the clavo_geo flag.
+    private fun geoCheck(reason: String): Boolean { // TEMP-ClavoGeo
+        val bind = _fragmentCameraBinding ?: return true // TEMP-ClavoGeo
+        val c = bind.webcamContainer // TEMP-ClavoGeo
+        if (c.width <= 0 || c.height <= 0) return true // TEMP-ClavoGeo: not laid out yet (fragment re-created), nothing to compare
+        val sheet = bind.bottomSheetLayout.root // TEMP-ClavoGeo
+        val vis = ContainerTransform.resolveVisibleHeight(c.height, c.top, sheet.top, sheet.height) // TEMP-ClavoGeo
+        val e = ContainerTransform.compute(c.width, c.height, vis.height, cameraRotation) // TEMP-ClavoGeo
+        val clip = c.clipBounds // TEMP-ClavoGeo
+        fun near(a: Float, b: Float) = Math.abs(a - b) < 0.01f // TEMP-ClavoGeo
+        val ok = near(c.rotation, e.rotation) && near(c.scaleX, e.scale) && near(c.scaleY, e.scale) && // TEMP-ClavoGeo
+            near(c.pivotX, e.pivotX) && near(c.pivotY, e.pivotY) && // TEMP-ClavoGeo
+            clip != null && clip.left == e.clipLeft && clip.top == e.clipTop && clip.right == e.clipRight && clip.bottom == e.clipBottom // TEMP-ClavoGeo
+        if (ok) { // TEMP-ClavoGeo
+            Log.i(GeoLog.TAG, "CEK transform ($reason): COCOK rot=${c.rotation} scale=${c.scaleX} pivot=${c.pivotX},${c.pivotY} clip=$clip visibleH=${vis.height}") // TEMP-ClavoGeo
+        } else { // TEMP-ClavoGeo
+            Log.e(GeoLog.TAG, "CEK transform ($reason): MISMATCH terpasang rot=${c.rotation} scale=${c.scaleX}/${c.scaleY} pivot=${c.pivotX},${c.pivotY} clip=$clip " + // TEMP-ClavoGeo
+                "| harapan rot=${e.rotation} scale=${e.scale} pivot=${e.pivotX},${e.pivotY} clip=${e.clipRight}x${e.clipBottom} " + // TEMP-ClavoGeo
+                "| visibleH=${vis.height} fallback=${vis.fallback} sheet.top=${sheet.top} sheet.height=${sheet.height} container.top=${c.top}") // TEMP-ClavoGeo
+        } // TEMP-ClavoGeo
+        return ok // TEMP-ClavoGeo
+    } // TEMP-ClavoGeo
 
     private fun thresholdText(v: Float) = String.format(java.util.Locale.US, "Ambang skor: %.2f", v)
 
@@ -438,7 +497,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                 objectDetectorHelper.clearObjectDetector()
                 objectDetectorHelper.setupObjectDetector()
             }
-            _fragmentCameraBinding?.overlay?.clear()
+            _fragmentCameraBinding?.overlay?.clear("ambang")
         }
     }
 
@@ -449,7 +508,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             objectDetectorHelper.setupObjectDetector()
         }
 
-        fragmentCameraBinding.overlay.clear()
+        fragmentCameraBinding.overlay.clear("updateControlsUi")
     }
 
     // Initializes CameraX and prepares it for binding camera use cases.
@@ -553,7 +612,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
 
                     // Drop results made with another rotation than the one now on screen.
                     if (resultBundle.manualRotation != cameraRotation) {
-                        fragmentCameraBinding.overlay.clear()
+                        fragmentCameraBinding.overlay.clear("hasil rotasi lain")
                     } else if (detectionResult.detections().isNotEmpty()) {
                         Log.d(TAG, "Objek terdeteksi: ${detectionResult.detections().size} buah.")
                         fragmentCameraBinding.overlay.setResults(
@@ -565,13 +624,14 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                         )
                     } else {
                         Log.d(TAG, "Hasil ada, tapi tidak ada objek terdeteksi (detections list is empty).")
-                        fragmentCameraBinding.overlay.clear()
+                        fragmentCameraBinding.overlay.clear("tanpa objek")
                     }
                 } else {
                     Log.d(TAG, "Daftar hasil utama kosong (results list is empty).")
-                    fragmentCameraBinding.overlay.clear()
+                    fragmentCameraBinding.overlay.clear("daftar kosong")
                 }
 
+                GeoLog.noteInvalidateOnResults() // TEMP-ClavoGeo
                 fragmentCameraBinding.overlay.invalidate()
             }
         }

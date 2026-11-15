@@ -13,7 +13,9 @@ import com.google.mediapipe.examples.objectdetection.BuildConfig // TEMP-ClavoGe
  */
 object GeoLog { // TEMP-ClavoGeo
     const val TAG = "ClavoGeo" // TEMP-ClavoGeo
-    val enabled: Boolean get() = BuildConfig.DEBUG // TEMP-ClavoGeo
+    /** Off by default; MainActivity turns it on only for an intent extra `clavo_geo=true`. */
+    @Volatile var active = false // TEMP-ClavoGeo
+    val enabled: Boolean get() = BuildConfig.DEBUG && active // TEMP-ClavoGeo
 
     @Volatile var rawW = 0 // TEMP-ClavoGeo
     @Volatile var rawH = 0 // TEMP-ClavoGeo
@@ -29,6 +31,37 @@ object GeoLog { // TEMP-ClavoGeo
         if (!enabled) return
         this.rawW = rawW; this.rawH = rawH; this.inW = inW; this.inH = inH
         this.imgRot = imgRot; this.manual = manual
+    }
+
+    // ---- overlay activity counters (main thread only), drained by the 5 s snapshot ----
+    private var nDraws = 0 // TEMP-ClavoGeo
+    private var nDrawsNoResults = 0 // TEMP-ClavoGeo
+    private var nBoxes = 0 // TEMP-ClavoGeo
+    private var nSetResults = 0 // TEMP-ClavoGeo
+    private var nInvOnResults = 0 // TEMP-ClavoGeo
+    private var nInvApply = 0 // TEMP-ClavoGeo
+    private var lastDrawBoxes = -1 // TEMP-ClavoGeo
+    private var lastDrawClip = "-" // TEMP-ClavoGeo
+    private var lastDrawHw = false // TEMP-ClavoGeo
+    private val clears = java.util.TreeMap<String, Int>() // TEMP-ClavoGeo
+
+    fun noteDraw(boxesDrawn: Int, hadResults: Boolean, clip: String, hw: Boolean) { // TEMP-ClavoGeo
+        if (!enabled) return
+        nDraws++; if (!hadResults) nDrawsNoResults++
+        nBoxes += boxesDrawn; lastDrawBoxes = boxesDrawn; lastDrawClip = clip; lastDrawHw = hw
+    }
+    fun noteSetResults() { if (enabled) nSetResults++ } // TEMP-ClavoGeo
+    fun noteInvalidateOnResults() { if (enabled) nInvOnResults++ } // TEMP-ClavoGeo
+    fun noteInvalidateApply() { if (enabled) nInvApply++ } // TEMP-ClavoGeo
+    fun noteClear(reason: String) { if (enabled) clears[reason] = (clears[reason] ?: 0) + 1 } // TEMP-ClavoGeo
+
+    /** Counters since the previous call (one line), then reset. draws=0 means onDraw did not run at all. */
+    fun drainStats(): String { // TEMP-ClavoGeo
+        val s = "overlay activity since last snapshot: onDraw=$nDraws (without results=$nDrawsNoResults) boxesDrawn=$nBoxes " +
+            "lastDraw[boxes=$lastDrawBoxes canvasClip=$lastDrawClip hwCanvas=$lastDrawHw] setResults(invalidate)=$nSetResults " +
+            "invalidate(onResults)=$nInvOnResults invalidate(afterTransform)=$nInvApply clear()=${clears.values.sum()} $clears"
+        nDraws = 0; nDrawsNoResults = 0; nBoxes = 0; nSetResults = 0; nInvOnResults = 0; nInvApply = 0; clears.clear()
+        return s
     }
 
     private fun f(v: Float) = String.format(java.util.Locale.US, "%.1f", v) // TEMP-ClavoGeo

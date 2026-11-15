@@ -24,6 +24,22 @@ object ContainerTransform {
         val clipBottom: Int
     )
 
+    /** [height] is the visible height to use; [fallback] is true when it had to fall back to the whole container. */
+    data class Visible(val height: Int, val fallback: Boolean)
+
+    /**
+     * Visible height = bottom-sheet top minus container top (both in the same parent's
+     * coordinates). The whole container height is used, and [Visible.fallback] set, when the sheet
+     * is not laid out (height <= 0) or its top is not a usable value (<= container top, or below
+     * the container). A fallback while the sheet is on screen means the caller read the sheet
+     * mid-layout, before the behaviour moved it into place.
+     */
+    fun resolveVisibleHeight(containerH: Int, containerTop: Int, sheetTop: Int, sheetHeight: Int): Visible {
+        if (sheetHeight <= 0) return Visible(containerH, true)
+        val v = sheetTop - containerTop
+        return if (v in 1..containerH) Visible(v, false) else Visible(containerH, true)
+    }
+
     /**
      * @param containerW container width in px
      * @param containerH container height in px

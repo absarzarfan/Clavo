@@ -119,6 +119,51 @@ class ContainerTransformTest {
         assertEquals(90f, ContainerTransform.compute(cw, ch, vh, 450).rotation, 0f)
     }
 
+    // ---- which visible height gets used (the wiring that went wrong in Build 2) ----
+    @Test fun expandedSheetGivesTopOfSheetMinusContainerTop() {
+        assertEquals(ContainerTransform.Visible(1365, false), ContainerTransform.resolveVisibleHeight(1976, 0, 1365, 611))
+    }
+
+    @Test fun collapsedSheetGivesLargerVisibleArea() {
+        assertEquals(ContainerTransform.Visible(1838, false), ContainerTransform.resolveVisibleHeight(1976, 0, 1838, 138))
+    }
+
+    @Test fun containerTopIsSubtracted() {
+        assertEquals(ContainerTransform.Visible(1300, false), ContainerTransform.resolveVisibleHeight(1976, 65, 1365, 611))
+    }
+
+    @Test fun sheetNotLaidOutFallsBackToContainerAndIsFlagged() {
+        assertEquals(ContainerTransform.Visible(1976, true), ContainerTransform.resolveVisibleHeight(1976, 0, 0, 0))
+    }
+
+    @Test fun sheetReadMidLayoutAtRawTopZeroIsDetectedAsFallback() {
+        // The Build 2 bug: a layout listener read sheet.top while it was still the raw layout
+        // position (0) although the sheet was already 611 px tall. visibleH became the whole
+        // container (pivot 988, scale 0.5466) and nothing noticed. It must now be flagged.
+        val v = ContainerTransform.resolveVisibleHeight(1976, 0, 0, 611)
+        assertTrue(v.fallback)
+        assertEquals(1976, v.height)
+        val wrong = ContainerTransform.compute(1080, 1976, v.height, 90)
+        assertEquals(988f, wrong.pivotY, eps)
+        assertEquals(1080f / 1976f, wrong.scale, 1e-5f)
+    }
+
+    @Test fun sheetTopBelowContainerIsFallback() {
+        assertTrue(ContainerTransform.resolveVisibleHeight(1976, 0, 2500, 611).fallback)
+    }
+
+    @Test fun sheetTopExactlyAtContainerBottomIsNotFallback() {
+        assertEquals(ContainerTransform.Visible(1976, false), ContainerTransform.resolveVisibleHeight(1976, 0, 1976, 138))
+    }
+
+    @Test fun resolvedVisibleHeightFeedsTheExpectedTransform() {
+        val v = ContainerTransform.resolveVisibleHeight(1976, 0, 1365, 611)
+        val r = ContainerTransform.compute(1080, 1976, v.height, 270)
+        assertEquals(682.5f, r.pivotY, eps)
+        assertEquals(1080f / 1365f, r.scale, 1e-5f)
+        assertEquals(1365, r.clipBottom)
+    }
+
     private fun assertPoint(ex: Float, ey: Float, actual: Pair<Float, Float>) {
         assertEquals("x", ex, actual.first, eps)
         assertEquals("y", ey, actual.second, eps)

@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.google.mediapipe.examples.objectdetection.utils.GeoLog.active = intent?.getBooleanExtra("clavo_geo", false) ?: false // TEMP-ClavoGeo
         com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.init(applicationContext) // TEMP-ClavoLat
         if (savedInstanceState == null) com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("App", "app_dibuka") // TEMP-ClavoLat
         if (savedInstanceState == null) UsbDebugLog.logSession(this) // TEMP-ClavoUSB
@@ -64,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     // creating a new instance. Nothing is reset on purpose; UsbManager grants permission itself.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.hasExtra("clavo_geo")) com.google.mediapipe.examples.objectdetection.utils.GeoLog.active = intent.getBooleanExtra("clavo_geo", false) // TEMP-ClavoGeo
         UsbDebugLog.d("MainActivity.onNewIntent action=${intent.action}") // TEMP-ClavoUSB
     }
 

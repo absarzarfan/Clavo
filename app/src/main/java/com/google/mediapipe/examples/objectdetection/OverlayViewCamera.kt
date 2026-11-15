@@ -55,7 +55,8 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
         initPaints()
     }
 
-    fun clear() {
+    fun clear(reason: String = "?") {
+        com.google.mediapipe.examples.objectdetection.utils.GeoLog.noteClear(reason) // TEMP-ClavoGeo
         results = null
         textPaint.reset()
         textBackgroundPaint.reset()
@@ -92,6 +93,7 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
         val geoOn = com.google.mediapipe.examples.objectdetection.utils.GeoLog.let { it.enabled && it.boxRequested } && results?.detections()?.isNotEmpty() == true // TEMP-ClavoGeo
         if (geoOn) com.google.mediapipe.examples.objectdetection.utils.GeoLog.boxRequested = false // TEMP-ClavoGeo
         var geoTop = geoOn // TEMP-ClavoGeo
+        var geoDrawn = 0 // TEMP-ClavoGeo
         results?.detections()?.map {
             val boxRect = RectF(
                 it.boundingBox().left,
@@ -155,6 +157,7 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
             val label = ClassColors.labelFor(category.categoryName(), category.index())
             boxPaint.color = ClassColors.colorFor(label, defaultBoxColor)
             canvas.drawRect(drawableRect, boxPaint)
+            geoDrawn++ // TEMP-ClavoGeo
 
             // Create text to display alongside detected objects
             val drawableText =
@@ -188,6 +191,9 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
                 textPaint
             )
         }
+        if (com.google.mediapipe.examples.objectdetection.utils.GeoLog.enabled) { // TEMP-ClavoGeo
+            com.google.mediapipe.examples.objectdetection.utils.GeoLog.noteDraw(geoDrawn, results != null, canvas.clipBounds.toShortString(), canvas.isHardwareAccelerated) // TEMP-ClavoGeo
+        } // TEMP-ClavoGeo
     }
 
     fun setResults(
@@ -197,6 +203,7 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
         imageRotation: Int,
         manualRotation: Int = 0
     ) {
+        com.google.mediapipe.examples.objectdetection.utils.GeoLog.noteSetResults() // TEMP-ClavoGeo
         results = detectionResults
         this.outputWidth = outputWidth
         this.outputHeight = outputHeight
@@ -248,7 +255,8 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
     /** TEMP-ClavoGeo: overlay state for the diagnosis log. */
     fun geoState(): String = "overlay state: outputWxH=${outputWidth}x${outputHeight} R=$outputRotate M=$manualRotation " + // TEMP-ClavoGeo
         "rotatedWxH=${rotatedWidth}x${rotatedHeight} scaleFactor=$scaleFactor previewLeft/Top=$previewLeft/$previewTop " + // TEMP-ClavoGeo
-        "viewWxH=${width}x${height} runningMode=$runningMode" // TEMP-ClavoGeo
+        "viewWxH=${width}x${height} runningMode=$runningMode isShown=$isShown alpha=$alpha visibility=$visibility " + // TEMP-ClavoGeo
+        "layerType=$layerType hwAccelerated=$isHardwareAccelerated attached=$isAttachedToWindow hasResults=${results != null}" // TEMP-ClavoGeo
 
     fun setPreviewLayout(left: Int, top: Int, width: Int, height: Int) {
         previewLeft = left.toFloat()
