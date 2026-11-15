@@ -84,4 +84,54 @@ class FrameMappingTest {
     fun nonRightAngleIsRejected() {
         FrameMapping.normalizeRotation(45)
     }
+
+    // ---- "Putar" button: angle cycle ----
+    @Test fun rotationCycleGoesThroughAllFourAnglesAndWraps() {
+        assertEquals(90, FrameMapping.nextRotation(0))
+        assertEquals(180, FrameMapping.nextRotation(90))
+        assertEquals(270, FrameMapping.nextRotation(180))
+        assertEquals(0, FrameMapping.nextRotation(270))
+    }
+
+    @Test fun fourTapsReturnToStart() {
+        var r = 0
+        repeat(4) { r = FrameMapping.nextRotation(r) }
+        assertEquals(0, r)
+    }
+
+    // ---- manual rotation of the Camera picture: box in the rotated picture -> un-rotated picture ----
+    @Test fun unrotateBoxUndoesClockwiseRotationForAllFourAngles() {
+        val w = 640
+        val h = 480
+        val original = Box(100f, 50f, 300f, 200f)
+        var cur = original
+        var curW = w
+        var curH = h
+        for (rot in listOf(0, 90, 180, 270)) {
+            if (rot > 0) {
+                // rotate once more by 90 cw
+                fun p(x: Float, y: Float) = Pair(curH - y, x)
+                val a = p(cur.left, cur.top)
+                val c = p(cur.right, cur.bottom)
+                cur = Box(minOf(a.first, c.first), minOf(a.second, c.second), maxOf(a.first, c.first), maxOf(a.second, c.second))
+                val t = curW; curW = curH; curH = t
+            }
+            assertBox(original, FrameMapping.unrotateBox(cur, w, h, rot))
+        }
+    }
+
+    @Test fun unrotateBoxKnownValuesOn640x480() {
+        val b = Box(10f, 20f, 110f, 70f)
+        assertBox(Box(10f, 20f, 110f, 70f), FrameMapping.unrotateBox(b, 640, 480, 0))
+        assertBox(Box(20f, 370f, 70f, 470f), FrameMapping.unrotateBox(b, 640, 480, 90))
+        assertBox(Box(530f, 410f, 630f, 460f), FrameMapping.unrotateBox(b, 640, 480, 180))
+        assertBox(Box(570f, 10f, 620f, 110f), FrameMapping.unrotateBox(b, 640, 480, 270))
+    }
+
+    @Test fun unrotateBoxIsAlwaysNormalised() {
+        for (rot in listOf(0, 90, 180, 270)) {
+            val b = FrameMapping.unrotateBox(Box(10f, 20f, 110f, 70f), 640, 480, rot)
+            assertTrue(b.left <= b.right && b.top <= b.bottom)
+        }
+    }
 }

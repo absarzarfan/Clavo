@@ -42,19 +42,27 @@ object DetectionPrefs {
         }
     }
 
-    /** Manual webcam rotation: 0, 90, 180 or 270. Default 0. */
-    fun getWebcamRotation(context: Context): Int = try {
-        val r = prefs(context).getInt(KEY_WEBCAM_ROTATION, 0)
+    // Webcam keeps its original key so a saved value survives the update.
+    private fun rotationKey(mode: String) = if (mode == MODE_WEBCAM) KEY_WEBCAM_ROTATION else "rotation_$mode"
+
+    /** Manual rotation per mode: 0, 90, 180 or 270. Default 0. */
+    fun getRotation(context: Context, mode: String): Int = try {
+        val r = prefs(context).getInt(rotationKey(mode), 0)
         if (r == 90 || r == 180 || r == 270) r else 0
     } catch (e: Exception) {
         0
     }
 
-    fun setWebcamRotation(context: Context, degrees: Int) {
+    fun setRotation(context: Context, mode: String, degrees: Int) {
         try {
-            prefs(context).edit().putInt(KEY_WEBCAM_ROTATION, FrameMapping.normalizeRotation(degrees)).apply()
+            prefs(context).edit().putInt(rotationKey(mode), FrameMapping.normalizeRotation(degrees)).apply()
         } catch (e: Exception) {
             Log.w(TAG, "Cannot save rotation", e)
         }
     }
+
+    /** Manual webcam rotation: 0, 90, 180 or 270. Default 0. */
+    fun getWebcamRotation(context: Context): Int = getRotation(context, MODE_WEBCAM)
+
+    fun setWebcamRotation(context: Context, degrees: Int) = setRotation(context, MODE_WEBCAM, degrees)
 }

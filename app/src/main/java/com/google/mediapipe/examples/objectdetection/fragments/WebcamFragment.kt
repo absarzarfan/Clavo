@@ -544,6 +544,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         )
         sheet.spinnerRotation.setSelection(options.indexOf(webcamRotation).coerceAtLeast(0), false)
         Log.i("ClavoDet", "[Webcam] manual rotation=$webcamRotation") // TEMP-ClavoDet
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setRotation("Webcam", webcamRotation) // TEMP-ClavoLat
         sheet.spinnerRotation.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val rot = options[position]
@@ -551,6 +552,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                 webcamRotation = rot
                 DetectionPrefs.setWebcamRotation(requireContext().applicationContext, rot)
                 Log.i("ClavoDet", "[Webcam] manual rotation=$rot") // TEMP-ClavoDet
+                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setRotation("Webcam", rot) // TEMP-ClavoLat
                 applyRotationTransform()
                 _binding?.overlay?.clear()
             }

@@ -22,6 +22,7 @@ import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.google.mediapipe.examples.objectdetection.utils.ClassColors
+import com.google.mediapipe.examples.objectdetection.utils.FrameMapping
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
 import kotlin.math.max
@@ -40,6 +41,9 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
     private var outputWidth = 0
     private var outputHeight = 0
     private var outputRotate = 0
+    private var manualRotation = 0
+    private var rotatedWidth = 0
+    private var rotatedHeight = 0
     private var runningMode: RunningMode = RunningMode.IMAGE
     private var previewWidth = 0
     private var previewHeight = 0
@@ -85,6 +89,9 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
 
     private fun drawImpl(canvas: Canvas) {
         super.draw(canvas)
+        val geoOn = com.google.mediapipe.examples.objectdetection.utils.GeoLog.let { it.enabled && it.boxRequested } && results?.detections()?.isNotEmpty() == true // TEMP-ClavoGeo
+        if (geoOn) com.google.mediapipe.examples.objectdetection.utils.GeoLog.boxRequested = false // TEMP-ClavoGeo
+        var geoTop = geoOn // TEMP-ClavoGeo
         results?.detections()?.map {
             val boxRect = RectF(
                 it.boundingBox().left,
@@ -92,6 +99,9 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
                 it.boundingBox().right,
                 it.boundingBox().bottom
             )
+            val geoThis = geoTop // TEMP-ClavoGeo
+            geoTop = false // TEMP-ClavoGeo
+            if (geoThis) com.google.mediapipe.examples.objectdetection.utils.GeoLog.box("1/5 detektor (koordinat input ${outputWidth}x${outputHeight}, belum R)", boxRect) // TEMP-ClavoGeo
             val matrix = Matrix()
             matrix.postTranslate(-outputWidth / 2f, -outputHeight / 2f)
 
@@ -107,6 +117,18 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
                 matrix.postTranslate(outputWidth / 2f, outputHeight / 2f)
             }
             matrix.mapRect(boxRect)
+            if (geoThis) com.google.mediapipe.examples.objectdetection.utils.GeoLog.box("2/5 setelah matriks R (ruang ${rotatedWidth}x${rotatedHeight})", boxRect) // TEMP-ClavoGeo
+            if (manualRotation != 0) {
+                // The detector saw the picture rotated by manualRotation; the preview container is
+                // rotated the same way, so draw in the un-rotated picture's coordinates.
+                val (dw, dh) = FrameMapping.rotatedSize(rotatedWidth, rotatedHeight, -manualRotation)
+                val b = FrameMapping.unrotateBox(
+                    FrameMapping.Box(boxRect.left, boxRect.top, boxRect.right, boxRect.bottom),
+                    dw, dh, manualRotation
+                )
+                boxRect.set(b.left, b.top, b.right, b.bottom)
+            }
+            if (geoThis) com.google.mediapipe.examples.objectdetection.utils.GeoLog.box("3/5 setelah unrotateBox (M=$manualRotation${if (manualRotation == 0) ", dilewati" else ""})", boxRect) // TEMP-ClavoGeo
             boxRect
         }?.forEachIndexed { index, floats ->
 
@@ -124,6 +146,10 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
                 previewTop + bottom
             )
 
+            if (geoOn && index == 0) { // TEMP-ClavoGeo
+                com.google.mediapipe.examples.objectdetection.utils.GeoLog.box("4/5 koordinat overlay (x scaleFactor $scaleFactor + offset $previewLeft,$previewTop)", drawableRect) // TEMP-ClavoGeo
+                com.google.mediapipe.examples.objectdetection.utils.GeoLog.box("5/5 layar akhir (setelah transform container)", com.google.mediapipe.examples.objectdetection.utils.GeoLog.toScreen(this, drawableRect)) // TEMP-ClavoGeo
+            } // TEMP-ClavoGeo
             // Label and box colour come from the class NAME (model metadata), not the index.
             val category = results?.detections()!![index].categories()[0]
             val label = ClassColors.labelFor(category.categoryName(), category.index())
@@ -168,12 +194,14 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
         detectionResults: ObjectDetectorResult,
         outputHeight: Int,
         outputWidth: Int,
-        imageRotation: Int
+        imageRotation: Int,
+        manualRotation: Int = 0
     ) {
         results = detectionResults
         this.outputWidth = outputWidth
         this.outputHeight = outputHeight
         this.outputRotate = imageRotation
+        this.manualRotation = FrameMapping.normalizeRotation(manualRotation)
 
         // Calculates the new width and height of an image after it has been rotated.
         // If `imageRotation` is 0 or 180, the new width and height are the same
@@ -184,6 +212,12 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
             90, 270 -> Pair(outputHeight, outputWidth)
             else -> return
         }
+        rotatedWidth = rotatedWidthHeight.first
+        rotatedHeight = rotatedWidthHeight.second
+
+        // With a manual rotation the preview shows the picture un-rotated (its container is
+        // rotated instead), so the scale is computed on the un-rotated size.
+        val shown = FrameMapping.rotatedSize(rotatedWidth, rotatedHeight, -this.manualRotation)
 
         // Images, videos are displayed in FIT_START mode.
         // Camera live streams is displayed in FILL_START mode. So we need to scale
@@ -193,14 +227,14 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
             RunningMode.IMAGE,
             RunningMode.VIDEO -> {
                 min(
-                    width * 1f / rotatedWidthHeight.first,
-                    height * 1f / rotatedWidthHeight.second
+                    width * 1f / shown.first,
+                    height * 1f / shown.second
                 )
             }
             RunningMode.LIVE_STREAM -> {
                 max(
-                    width * 1f / rotatedWidthHeight.first,
-                    height * 1f / rotatedWidthHeight.second
+                    width * 1f / shown.first,
+                    height * 1f / shown.second
                 )
             }
         }
@@ -210,6 +244,11 @@ class OverlayViewCamera(context: Context?, attrs: AttributeSet?) :
     companion object {
         private const val BOUNDING_RECT_TEXT_PADDING = 8
     }
+
+    /** TEMP-ClavoGeo: overlay state for the diagnosis log. */
+    fun geoState(): String = "overlay state: outputWxH=${outputWidth}x${outputHeight} R=$outputRotate M=$manualRotation " + // TEMP-ClavoGeo
+        "rotatedWxH=${rotatedWidth}x${rotatedHeight} scaleFactor=$scaleFactor previewLeft/Top=$previewLeft/$previewTop " + // TEMP-ClavoGeo
+        "viewWxH=${width}x${height} runningMode=$runningMode" // TEMP-ClavoGeo
 
     fun setPreviewLayout(left: Int, top: Int, width: Int, height: Int) {
         previewLeft = left.toFloat()

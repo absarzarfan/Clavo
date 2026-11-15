@@ -54,17 +54,31 @@ object FrameMapping {
         val db = sq.y + box.bottom * k
 
         // rotated image D -> source frame F (inverse of the clockwise rotation)
-        fun toFrame(x: Float, y: Float): Pair<Float, Float> = when (rot) {
+        return unrotateBox(Box(dl, dt, dr, db), frameW, frameH, rot)
+    }
+
+    /**
+     * Maps a point from the image D (frame F of size [frameW] x [frameH] rotated clockwise by
+     * [rotation]) back to F.
+     */
+    fun unrotatePoint(x: Float, y: Float, frameW: Int, frameH: Int, rotation: Int): Pair<Float, Float> =
+        when (normalizeRotation(rotation)) {
             0 -> Pair(x, y)
             90 -> Pair(y, frameH - x)
             180 -> Pair(frameW - x, frameH - y)
             else -> Pair(frameW - y, x) // 270
         }
-        val a = toFrame(dl, dt)
-        val b = toFrame(dr, db)
+
+    /** Box version of [unrotatePoint]; the result is normalised (left <= right, top <= bottom). */
+    fun unrotateBox(box: Box, frameW: Int, frameH: Int, rotation: Int): Box {
+        val a = unrotatePoint(box.left, box.top, frameW, frameH, rotation)
+        val b = unrotatePoint(box.right, box.bottom, frameW, frameH, rotation)
         return Box(
             minOf(a.first, b.first), minOf(a.second, b.second),
             maxOf(a.first, b.first), maxOf(a.second, b.second)
         )
     }
+
+    /** Manual rotation cycle of the "Putar" button: 0 -> 90 -> 180 -> 270 -> 0. */
+    fun nextRotation(current: Int): Int = (normalizeRotation(current) + 90) % 360
 }

@@ -25,7 +25,9 @@ import android.view.ViewGroup
 import android.widget.SeekBar
 import android.widget.Toast
 import com.google.mediapipe.examples.objectdetection.databinding.InfoBottomSheetBinding
+import com.google.mediapipe.examples.objectdetection.utils.ContainerTransform
 import com.google.mediapipe.examples.objectdetection.utils.DetectionPrefs
+import com.google.mediapipe.examples.objectdetection.utils.FrameMapping
 import com.google.mediapipe.examples.objectdetection.utils.ThresholdScale
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
@@ -47,6 +49,7 @@ import com.google.mediapipe.examples.objectdetection.databinding.FragmentCameraB
 import com.google.mediapipe.examples.objectdetection.utils.ModelRepository
 import com.google.mediapipe.examples.objectdetection.utils.ModelSpinnerController
 import com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder // TEMP-ClavoLat
+import com.google.mediapipe.examples.objectdetection.utils.GeoLog // TEMP-ClavoGeo
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +77,9 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
     private var cameraProvider: ProcessCameraProvider? = null
     private var initialModelPath: String = ""
     private var modelSpinnerController: ModelSpinnerController? = null
+
+    // Manual rotation (0/90/180/270, clockwise) shared by preview, detector input and boxes.
+    private var cameraRotation = 0
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -127,6 +133,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
 
     // Cleans up the view binding and shuts down the background executor.
     override fun onDestroyView() {
+        _fragmentCameraBinding?.root?.removeCallbacks(geoTicker) // TEMP-ClavoGeo
         _fragmentCameraBinding = null
         modelSpinnerController = null
 
@@ -173,6 +180,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         backgroundExecutor = Executors.newSingleThreadExecutor()
 
         initBottomSheetControls()
+        initRotationControl()
 
         // Runs on Main; heavy work is moved to IO inside. Cancelled automatically when the
         // view is destroyed.
@@ -279,6 +287,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             helper.release()
             return
         }
+        helper.manualRotation = cameraRotation
         objectDetectorHelper = helper
         b.viewFinder.post { if (_fragmentCameraBinding != null) setUpCamera() }
     }
@@ -302,6 +311,97 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                 _fragmentCameraBinding?.overlay?.clear()
             }
         }
+    }
+
+    // "Putar" button: each tap cycles 0 -> 90 -> 180 -> 270 -> 0. The value is saved per mode.
+    private fun initRotationControl() {
+        val b = fragmentCameraBinding
+        val btn = b.bottomSheetLayout.btnRotate
+        btn.visibility = View.VISIBLE // hidden by default in the shared sheet; only Camera shows it
+        cameraRotation = DetectionPrefs.getRotation(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA)
+        btn.text = "Putar ${cameraRotation}°"
+        btn.contentDescription = "Putar $cameraRotation derajat"
+        Log.i("ClavoDet", "[Camera] manual rotation=$cameraRotation") // TEMP-ClavoDet
+        LatencyRecorder.setRotation("Camera", cameraRotation) // TEMP-ClavoLat
+        // Fixed width: wide enough for the longest label so the spinner beside it never shifts.
+        btn.minWidth = Math.ceil(
+            (btn.paint.measureText("Putar 270°") + btn.paddingLeft + btn.paddingRight + 2f).toDouble()
+        ).toInt()
+        val listener = View.OnLayoutChangeListener { _, l, t, r, bt, ol, ot, or2, ob ->
+            if (r - l != or2 - ol || bt - t != ob - ot) applyRotationTransform()
+        }
+        b.webcamContainer.addOnLayoutChangeListener(listener)
+        // The visible area ends at the top of the bottom sheet: follow it when it moves or resizes.
+        val sheet = b.bottomSheetLayout.root
+        sheet.addOnLayoutChangeListener { _, _, t, _, bt, _, ot, _, ob ->
+            if (t != ot || bt != ob) applyRotationTransform()
+        }
+        com.google.android.material.bottomsheet.BottomSheetBehavior.from(sheet).setBottomSheetCallback(
+            object : com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback() {
+                override fun onStateChanged(bottomSheet: View, newState: Int) = applyRotationTransform()
+                override fun onSlide(bottomSheet: View, slideOffset: Float) = applyRotationTransform()
+            }
+        )
+        applyRotationTransform()
+        if (GeoLog.enabled) { // TEMP-ClavoGeo
+            b.root.post { geoSnapshot("awal") } // TEMP-ClavoGeo
+            b.root.postDelayed(geoTicker, 5000L) // TEMP-ClavoGeo
+        } // TEMP-ClavoGeo
+        btn.setOnClickListener {
+            val rot = FrameMapping.nextRotation(cameraRotation)
+            cameraRotation = rot
+            DetectionPrefs.setRotation(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA, rot)
+            if (this::objectDetectorHelper.isInitialized) objectDetectorHelper.manualRotation = rot
+            btn.text = "Putar ${rot}°"
+            btn.contentDescription = "Putar $rot derajat"
+            Log.i("ClavoDet", "[Camera] manual rotation=$rot") // TEMP-ClavoDet
+            LatencyRecorder.setRotation("Camera", rot) // TEMP-ClavoLat
+            applyRotationTransform()
+            b.overlay.clear()
+            b.root.post { geoSnapshot("sudut berubah") } // TEMP-ClavoGeo
+        }
+    }
+
+    // TEMP-ClavoGeo: periodic + on-change geometry snapshot (debug builds, logcat tag ClavoGeo).
+    private val geoTicker = object : Runnable { // TEMP-ClavoGeo
+        override fun run() { // TEMP-ClavoGeo
+            val b = _fragmentCameraBinding ?: return // TEMP-ClavoGeo
+            geoSnapshot("5 detik") // TEMP-ClavoGeo
+            b.root.postDelayed(this, 5000L) // TEMP-ClavoGeo
+        } // TEMP-ClavoGeo
+    } // TEMP-ClavoGeo
+
+    private fun geoSnapshot(reason: String) { // TEMP-ClavoGeo
+        val b = _fragmentCameraBinding ?: return // TEMP-ClavoGeo
+        val sheet = b.bottomSheetLayout.root // TEMP-ClavoGeo
+        val state = try { "state=" + com.google.android.material.bottomsheet.BottomSheetBehavior.from(sheet).state } catch (e: Exception) { "state=?" } // TEMP-ClavoGeo
+        val c = b.webcamContainer // TEMP-ClavoGeo
+        val visibleH = if (sheet.height > 0) sheet.top - c.top else c.height // TEMP-ClavoGeo
+        val t = ContainerTransform.compute(c.width, c.height, visibleH, cameraRotation) // TEMP-ClavoGeo
+        val transformState = "container final transform: rotation=${c.rotation} scale=${c.scaleX}/${c.scaleY} pivot=${c.pivotX},${c.pivotY} " + // TEMP-ClavoGeo
+            "translation=${c.translationX},${c.translationY} clipBounds=${c.clipBounds} visibleH=$visibleH(sheet.top=${sheet.top} - container.top=${c.top}) " + // TEMP-ClavoGeo
+            "expected(ContainerTransform)=rot ${t.rotation} scale ${t.scale} pivot ${t.pivotX},${t.pivotY} clip ${t.clipRight}x${t.clipBottom}" // TEMP-ClavoGeo
+        GeoLog.snapshot(reason, cameraRotation, c, b.viewFinder, b.overlay, b.overlay.geoState() + " | " + transformState, sheet, state) // TEMP-ClavoGeo
+    } // TEMP-ClavoGeo
+
+    // Rotates the preview+overlay container clockwise about the centre of the VISIBLE area (the
+    // part above the bottom sheet) and, for 90/270, shrinks it so the rotated visible area still
+    // fits; drawing is clipped to the visible area. Boxes are drawn inside the container, so
+    // they rotate with the preview. The maths lives in ContainerTransform (unit tested).
+    private fun applyRotationTransform() {
+        val bind = _fragmentCameraBinding ?: return
+        val c = bind.webcamContainer
+        val sheet = bind.bottomSheetLayout.root
+        val visibleH = if (sheet.height > 0) sheet.top - c.top else c.height
+        val t = ContainerTransform.compute(c.width, c.height, visibleH, cameraRotation)
+        c.pivotX = t.pivotX
+        c.pivotY = t.pivotY
+        c.rotation = t.rotation
+        c.scaleX = t.scale
+        c.scaleY = t.scale
+        c.translationX = t.translationX
+        c.translationY = t.translationY
+        c.clipBounds = android.graphics.Rect(t.clipLeft, t.clipTop, t.clipRight, t.clipBottom)
     }
 
     private fun thresholdText(v: Float) = String.format(java.util.Locale.US, "Ambang skor: %.2f", v)
@@ -451,13 +551,17 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
                 if (resultBundle.results.isNotEmpty()) {
                     val detectionResult = resultBundle.results[0]
 
-                    if (detectionResult.detections().isNotEmpty()) {
+                    // Drop results made with another rotation than the one now on screen.
+                    if (resultBundle.manualRotation != cameraRotation) {
+                        fragmentCameraBinding.overlay.clear()
+                    } else if (detectionResult.detections().isNotEmpty()) {
                         Log.d(TAG, "Objek terdeteksi: ${detectionResult.detections().size} buah.")
                         fragmentCameraBinding.overlay.setResults(
                             detectionResult,
                             resultBundle.inputImageHeight,
                             resultBundle.inputImageWidth,
-                            resultBundle.inputImageRotation
+                            resultBundle.inputImageRotation,
+                            resultBundle.manualRotation
                         )
                     } else {
                         Log.d(TAG, "Hasil ada, tapi tidak ada objek terdeteksi (detections list is empty).")

@@ -55,6 +55,13 @@ class ObjectDetectorHelper(
     private var imageRotation = 0
     private lateinit var imageProcessingOptions: ImageProcessingOptions
 
+    // Manual clockwise rotation (0/90/180/270) applied to camera frames before the detector sees
+    // them (Camera mode). Default 0 = unchanged behaviour. Each frame remembers the value it was
+    // sent with, so a late result is mapped with the rotation it was produced under.
+    @Volatile
+    var manualRotation = 0
+    private val manualRotationByFrame = java.util.concurrent.ConcurrentHashMap<Long, Int>()
+
     // Guards every access to objectDetector so close() can never run while a frame is being
     // submitted to the native graph (that race caused SIGSEGV in nativeCreateProto).
     private val detectorLock = Any()
@@ -309,8 +316,19 @@ class ObjectDetectorHelper(
             return
         }
 
+        // Manual rotation: the detector sees the same rotated picture as the preview.
+        val manual = manualRotation
+        val input = if (manual == 0) bitmapBuffer else Bitmap.createBitmap(
+            bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height,
+            android.graphics.Matrix().apply { postRotate(manual.toFloat()) }, true
+        )
+        if (manualRotationByFrame.size > 50) manualRotationByFrame.clear()
+        manualRotationByFrame[frameTime] = manual
+
+        com.google.mediapipe.examples.objectdetection.utils.GeoLog.setFrame(bitmapBuffer.width, bitmapBuffer.height, input.width, input.height, imageRotation, manual) // TEMP-ClavoGeo
+
         // Convert the input Bitmap object to an MPImage object to run inference
-        val mpImage = BitmapImageBuilder(bitmapBuffer).build()
+        val mpImage = BitmapImageBuilder(input).build()
 
         detectAsync(mpImage, frameTime)
     }
@@ -374,7 +392,8 @@ class ObjectDetectorHelper(
                 inferenceTime,
                 input.height,
                 input.width,
-                imageRotation
+                imageRotation,
+                manualRotationByFrame.remove(result.timestampMs()) ?: 0
             )
         )
     }
@@ -428,7 +447,9 @@ class ObjectDetectorHelper(
         val inferenceTime: Long,
         val inputImageHeight: Int,
         val inputImageWidth: Int,
-        val inputImageRotation: Int = 0
+        val inputImageRotation: Int = 0,
+        /** Manual clockwise rotation (Camera mode) applied to the frame before detection. */
+        val manualRotation: Int = 0
     )
 
     companion object {

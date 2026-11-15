@@ -58,14 +58,33 @@
             android:textColor="@color/bottom_sheet_text_color"
             android:textSize="@dimen/bottom_sheet_text_size" />
 
-            <androidx.appcompat.widget.AppCompatSpinner
-                android:id="@+id/spinner_model"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:minWidth="@dimen/bottom_sheet_spinner_model_min_width"
-                android:spinnerMode="dropdown"
-                android:theme="@style/BottomSheetSpinnerItemStyle" />
+                android:gravity="center_vertical|center_horizontal"
+                android:orientation="horizontal">
+
+                <androidx.appcompat.widget.AppCompatSpinner
+                    android:id="@+id/spinner_model"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="@dimen/bottom_sheet_spinner_model_min_width"
+                    android:spinnerMode="dropdown"
+                    android:theme="@style/BottomSheetSpinnerItemStyle" />
+
+                <!-- Camera mode only (hidden by default; CameraFragment shows it).
+                     Each tap cycles 0 -> 90 -> 180 -> 270 -> 0 -->
+                <Button
+                    android:id="@+id/btn_rotate"
+                    style="@style/RotateButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="Putar 0 derajat"
+                    android:text="Putar 0°"
+                    android:visibility="gone" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/model_status"

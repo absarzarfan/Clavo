@@ -29,6 +29,20 @@
         <item name="colorAccent">@color/mp_variant</item>
     </style>
 
+    <!-- Outlined "Putar" button: white fill, 1.5dp CLAVO-orange outline and text, no extra dependency. -->
+    <style name="RotateButton" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/bg_rotate_button</item>
+        <item name="android:textColor">@color/mp_primary</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingLeft">16dp</item>
+        <item name="android:paddingRight">16dp</item>
+        <item name="android:elevation">2dp</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
     <style name="SplashTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_screen</item>
         <item name="android:statusBarColor">@android:color/transparent</item>

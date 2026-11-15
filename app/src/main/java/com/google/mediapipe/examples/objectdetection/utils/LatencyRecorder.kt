@@ -38,7 +38,7 @@ object LatencyRecorder { // TEMP-ClavoLat
     private const val FLUSH_S = 5L // TEMP-ClavoLat
     private const val WINDOW = 100 // TEMP-ClavoLat
     private const val HEADER =
-        "sesi,waktu_ms,mode,model,lebar,tinggi,infer_ms,e2e_ms,jumlah_deteksi,skor_tertinggi,tipe,keterangan" // TEMP-ClavoLat
+        "sesi,waktu_ms,mode,model,lebar,tinggi,infer_ms,e2e_ms,jumlah_deteksi,skor_tertinggi,tipe,keterangan,rotation_deg" // TEMP-ClavoLat
 
     const val MODE_CAMERA = "Camera" // TEMP-ClavoLat
     const val MODE_WEBCAM = "Webcam" // TEMP-ClavoLat
@@ -64,6 +64,7 @@ object LatencyRecorder { // TEMP-ClavoLat
     private val awaitingDraw = ConcurrentHashMap<String, Row>() // TEMP-ClavoLat
     private val currentFrame = ThreadLocal<Pair<String, Long>?>() // TEMP-ClavoLat
     private val models = ConcurrentHashMap<String, String>() // TEMP-ClavoLat
+    private val rotations = ConcurrentHashMap<String, Int>() // TEMP-ClavoLat
     private val lastState = ConcurrentHashMap<String, String>() // TEMP-ClavoLat
     private val stats = HashMap<String, Stats>() // TEMP-ClavoLat
     private val queue = ConcurrentLinkedQueue<String>() // TEMP-ClavoLat
@@ -131,7 +132,7 @@ object LatencyRecorder { // TEMP-ClavoLat
         queue.add(
             "$session,${System.currentTimeMillis()},${row.mode},${csv(row.model)},${row.w},${row.h}," +
                 "${"%.2f".format(Locale.US, row.inferMs)},${"%.2f".format(Locale.US, e2eMs)}," +
-                "${row.detections},${"%.3f".format(Locale.US, row.maxScore)},frame,"
+                "${row.detections},${"%.3f".format(Locale.US, row.maxScore)},frame,,${rotations[row.mode] ?: 0}"
         )
         summarize(row.mode, row.inferMs, e2eMs)
     }
@@ -144,12 +145,18 @@ object LatencyRecorder { // TEMP-ClavoLat
         activity(mode, "model_dipilih", modelName)
     }
 
+    /** Manual rotation (deg) of a mode; written to the rotation_deg column (last column). */
+    fun setRotation(mode: String, degrees: Int) { // TEMP-ClavoLat
+        if (!enabled) return
+        rotations[mode] = degrees
+    }
+
     fun activity(mode: String, event: String, detail: String = "") { // TEMP-ClavoLat
         if (!enabled) return
         val model = models[mode] ?: models.values.firstOrNull() ?: "?"
         val now = System.currentTimeMillis()
         Log.d(TAG_ACT, "t=$now mode=$mode model=$model event=$event${if (detail.isEmpty()) "" else "($detail)"}")
-        queue.add("$session,$now,$mode,${csv(model)},,,,,,,aktivitas,${csv(if (detail.isEmpty()) event else "$event($detail)")}")
+        queue.add("$session,$now,$mode,${csv(model)},,,,,,,aktivitas,${csv(if (detail.isEmpty()) event else "$event($detail)")},${rotations[mode] ?: 0}")
     }
 
     /** Logs only when [value] differs from the last one reported under [key]. */
