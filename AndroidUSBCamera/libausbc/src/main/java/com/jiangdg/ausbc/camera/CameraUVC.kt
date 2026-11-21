@@ -240,8 +240,11 @@ class CameraUVC(ctx: Context, device: UsbDevice) : MultiCameraClient.ICamera(ctx
         postStateEvent(ICameraStateCallBack.State.CLOSED)
         isPreviewed = false
         releaseEncodeProcessor()
-        mUvcCamera?.destroy()
+        // Modified 2026-11-22 by Absar Rakha Zarfan (Apache-2.0): take the instance out of the shared field first, so the same
+        // UVCCamera can never be destroyed twice or by two threads.
+        val cam = mUvcCamera
         mUvcCamera = null
+        cam?.destroy()
         if (Utils.debugCamera) {
             Logger.i(TAG, " stop preview, name = ${device.deviceName}")
         }

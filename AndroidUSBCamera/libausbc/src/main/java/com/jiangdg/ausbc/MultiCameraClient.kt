@@ -322,6 +322,15 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         override fun handleMessage(msg: Message): Boolean {
             when (msg.what) {
                 MSG_START_PREVIEW -> {
+                    // Modified 2026-11-22 by Absar Rakha Zarfan (Apache-2.0): the previous session of this camera shares mUvcCamera and
+                    // mRenderManager with this one. Never start while its thread is still stopping
+                    // (waits on THIS camera thread, never on main).
+                    if (!awaitStopped(START_WAIT_PRIOR_STOP_MS)) {
+                        android.util.Log.w("ClavoUSB", "camera-start-aborted previous session still stopping after ${START_WAIT_PRIOR_STOP_MS}ms thread=${Thread.currentThread().name} session=$mSessionId")
+                        mOpenState = 0
+                        postStateEvent(ICameraStateCallBack.State.ERROR, "previous camera session still closing")
+                        return true
+                    }
                     val previewWidth = mCameraRequest!!.previewWidth
                     val previewHeight = mCameraRequest!!.previewHeight
                     val renderMode = mCameraRequest!!.renderMode
@@ -382,19 +391,27 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
                     }
                 }
                 MSG_STOP_PREVIEW -> {
+                    // Modified 2026-11-22 by Absar Rakha Zarfan (Apache-2.0): logged teardown, one at a time per camera.
+                    val t0 = SystemClock.elapsedRealtime()
+                    android.util.Log.i("ClavoUSB", "camera-teardown start thread=${Thread.currentThread().name} session=$mSessionId state=open:$mOpenState previewed:$isPreviewed device=${device.deviceName}")
                     try {
-                        mSizeChangedFuture?.cancel(true)
-                        mSizeChangedFuture = null
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                        try {
+                            mSizeChangedFuture?.cancel(true)
+                            mSizeChangedFuture = null
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                        closeCameraInternal()
+                        mRenderManager?.getCacheEffectList()?.apply {
+                            mCacheEffectList.clear()
+                            mCacheEffectList.addAll(this)
+                        }
+                        mRenderManager?.stopRenderScreen()
+                        mRenderManager = null
+                
+                    } finally {
+                        android.util.Log.i("ClavoUSB", "camera-teardown end thread=${Thread.currentThread().name} session=$mSessionId elapsedMs=${SystemClock.elapsedRealtime() - t0} device=${device.deviceName}")
                     }
-                    closeCameraInternal()
-                    mRenderManager?.getCacheEffectList()?.apply {
-                        mCacheEffectList.clear()
-                        mCacheEffectList.addAll(this)
-                    }
-                    mRenderManager?.stopRenderScreen()
-                    mRenderManager = null
                 }
                 MSG_CAPTURE_IMAGE -> {
                     (msg.obj as Pair<*, *>).apply {
@@ -741,7 +758,7 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
          * Waits (at most [timeoutMs] in total) for camera threads that were told to stop to finish.
          * Never call on the main thread for long: callers pass <= 1000 ms and use a worker thread.
          */
-        fun awaitStopped(timeoutMs: Long) {
+        fun awaitStopped(timeoutMs: Long): Boolean {
             val deadline = SystemClock.elapsedRealtime() + timeoutMs
             for (t in mStoppingThreads) {
                 if (t === Thread.currentThread()) continue
@@ -755,6 +772,7 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
                 }
             }
             mStoppingThreads.removeAll { !it.isAlive }
+            return mStoppingThreads.none { it !== Thread.currentThread() && it.isAlive }
         }
 
         /**
@@ -1155,6 +1173,7 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         private const val OPEN_STALE_MS = 8000L // Modified 2026-11-21 by Absar Rakha Zarfan
         @Volatile private var lastSurfaceW = 0
         @Volatile private var lastSurfaceH = 0
+        private const val START_WAIT_PRIOR_STOP_MS = 3000L
         @Volatile private var lastContainerW = 0
         @Volatile private var lastContainerH = 0
         private const val MSG_STOP_PREVIEW = 0x02
