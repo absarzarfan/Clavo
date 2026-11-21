@@ -87,6 +87,7 @@ abstract class CameraFragment : BaseFragment(), ICameraStateCallBack {
         mCameraClient = MultiCameraClient(requireContext(), object : IDeviceConnectCallBack {
             override fun onAttachDev(device: UsbDevice?) {
                 device ?: return
+                onUsbEvent("attach-dev", device, "hasPermission=${mCameraClient?.hasPermission(device)}") // Modified 2026-11-21 by Absar Rakha Zarfan
                 context?.let {
                     if (mCameraMap.containsKey(device.deviceId)) {
                         return
@@ -127,6 +128,7 @@ abstract class CameraFragment : BaseFragment(), ICameraStateCallBack {
                 device ?: return
                 ctrlBlock ?: return
                 context ?: return
+                onUsbEvent("connect-dev", device, "permission granted, usb connection opened") // Modified 2026-11-21 by Absar Rakha Zarfan
                 mCameraMap[device.deviceId]?.apply {
                     setUsbControlBlock(ctrlBlock)
                 }?.also { camera ->
@@ -149,6 +151,7 @@ abstract class CameraFragment : BaseFragment(), ICameraStateCallBack {
             }
 
             override fun onCancelDev(device: UsbDevice?) {
+                onUsbEvent("cancel-dev", device, "permission denied/dismissed or connection cancelled") // Modified 2026-11-21 by Absar Rakha Zarfan
                 mRequestPermission.set(false)
                 try {
                     mCurrentCamera?.cancel(true)
@@ -251,9 +254,16 @@ abstract class CameraFragment : BaseFragment(), ICameraStateCallBack {
      * @param device see [UsbDevice]
      */
     protected fun requestPermission(device: UsbDevice?) {
+        onUsbEvent("request-permission", device, "hasPermission=${mCameraClient?.hasPermission(device)}") // Modified 2026-11-21 by Absar Rakha Zarfan
         mRequestPermission.set(true)
         mCameraClient?.requestPermission(device)
     }
+
+    /**
+     * Diagnostic hook for USB permission/connect events (attach-dev, request-permission, connect-dev,
+     * cancel-dev). Modified 2026-11-21 by Absar Rakha Zarfan.
+     */
+    protected open fun onUsbEvent(event: String, device: UsbDevice?, detail: String) {}
 
     /**
      * Connect a device that already has permission (no permission request).

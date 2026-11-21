@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         com.google.mediapipe.examples.objectdetection.utils.GeoLog.active = intent?.getBooleanExtra("clavo_geo", false) ?: false // TEMP-ClavoGeo
         com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.init(applicationContext) // TEMP-ClavoLat
         if (savedInstanceState == null) com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("App", "app_dibuka") // TEMP-ClavoLat
+        UsbDebugLog.logProcessStart(applicationContext, intent, savedInstanceState != null) // TEMP-ClavoUSB
         if (savedInstanceState == null) UsbDebugLog.logSession(this) // TEMP-ClavoUSB
         activityMainBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(activityMainBinding.root)

@@ -132,67 +132,75 @@ class CameraUVC(ctx: Context, device: UsbDevice) : MultiCameraClient.ICamera(ctx
             return // Modified 2026-11-21 by Absar Rakha Zarfan: one failure = one ERROR
         }
 
-        // 2. set preview size and register preview callback
-        var previewSize = getSuitableSize(request.previewWidth, request.previewHeight).apply {
-            mCameraRequest!!.previewWidth = width
-            mCameraRequest!!.previewHeight = height
-        }
-        val previewFormat = if (mCameraRequest?.previewFormat == CameraRequest.PreviewFormat.FORMAT_YUYV) {
+        // 2. set preview size and register preview callback.
+        // Modified 2026-11-21 by Absar Rakha Zarfan: the sizes the device advertises are logged once
+        // per connect, and when the requested size/format is refused the next supported size is tried
+        // (instead of repeating the same size with the other format only).
+        val wantFormat = if (mCameraRequest?.previewFormat == CameraRequest.PreviewFormat.FORMAT_YUYV) {
             UVCCamera.FRAME_FORMAT_YUYV
         } else {
             UVCCamera.FRAME_FORMAT_MJPEG
         }
-        try {
-            Logger.i(TAG, "getSuitableSize: $previewSize")
-            if (! isPreviewSizeSupported(previewSize)) {
-                closeCamera()
-                postStateEvent(ICameraStateCallBack.State.ERROR, "unsupported preview size")
-                Logger.e(TAG, "open camera failed, preview size($previewSize) unsupported-> ${mUvcCamera?.supportedSizeList}")
-                return
-            }
-            initEncodeProcessor(previewSize.width, previewSize.height)
-            // if give custom minFps or maxFps or unsupported preview size
-            // this method will fail
-            mUvcCamera?.setPreviewSize(
-                previewSize.width,
-                previewSize.height,
-                MIN_FS,
-                MAX_FPS,
-                previewFormat,
-                UVCCamera.DEFAULT_BANDWIDTH
-            )
+        val otherFormat = if (wantFormat == UVCCamera.FRAME_FORMAT_YUYV) UVCCamera.FRAME_FORMAT_MJPEG else UVCCamera.FRAME_FORMAT_YUYV
+        fun sizesOf(fmt: Int): List<PreviewSize> = try {
+            mUvcCamera?.getSupportedSizeList(fmt)?.map { PreviewSize(it.width, it.height) }.orEmpty().distinct()
         } catch (e: Exception) {
+            emptyList()
+        }
+        val wantSizes = sizesOf(wantFormat)
+        val otherSizes = sizesOf(otherFormat)
+        fun fmtName(f: Int) = if (f == UVCCamera.FRAME_FORMAT_MJPEG) "MJPEG" else "YUYV"
+        android.util.Log.i(
+            "ClavoUSB",
+            "supported-sizes device=${device.deviceName} requested=${request.previewWidth}x${request.previewHeight} " +
+                "${fmtName(wantFormat)}=[${wantSizes.joinToString(",") { "${it.width}x${it.height}" }}] " +
+                "${fmtName(otherFormat)}=[${otherSizes.joinToString(",") { "${it.width}x${it.height}" }}]"
+        )
+        val reqW = request.previewWidth
+        val reqH = request.previewHeight
+        val candidates = ArrayList<Pair<PreviewSize, Int>>()
+        fun addCand(sz: PreviewSize, fmt: Int) {
+            if (candidates.none { it.first == sz && it.second == fmt } && candidates.size < 8) candidates.add(sz to fmt)
+        }
+        val requested = PreviewSize(reqW, reqH)
+        if (wantSizes.contains(requested)) addCand(requested, wantFormat)
+        if (otherSizes.contains(requested)) addCand(requested, otherFormat)
+        val byDistance = { sz: PreviewSize -> Math.abs(sz.width - reqW) + Math.abs(sz.height - reqH) }
+        wantSizes.sortedBy(byDistance).take(4).forEach { addCand(it, wantFormat) }
+        otherSizes.sortedBy(byDistance).take(2).forEach { addCand(it, otherFormat) }
+        if (candidates.isEmpty()) {
+            // The device list could not be read: try the plain request in both formats.
+            addCand(requested, wantFormat)
+            addCand(requested, otherFormat)
+        }
+        var previewSize = PreviewSize(reqW, reqH)
+        var opened = false
+        var lastError: String? = null
+        for ((sz, fmt) in candidates) {
             try {
-                previewSize = getSuitableSize(request.previewWidth, request.previewHeight).apply {
-                    mCameraRequest!!.previewWidth = width
-                    mCameraRequest!!.previewHeight = height
-                }
-                if (! isPreviewSizeSupported(previewSize)) {
-                    postStateEvent(ICameraStateCallBack.State.ERROR, "unsupported preview size")
-                    closeCamera()
-                    Logger.e(TAG, "open camera failed, preview size($previewSize) unsupported-> ${mUvcCamera?.supportedSizeList}")
-                    return
-                }
-                Logger.e(TAG, " setPreviewSize failed(format is $previewFormat), try to use other format...")
-                mUvcCamera?.setPreviewSize(
-                    previewSize.width,
-                    previewSize.height,
-                    MIN_FS,
-                    MAX_FPS,
-                    if (previewFormat == UVCCamera.FRAME_FORMAT_YUYV) {
-                        UVCCamera.FRAME_FORMAT_MJPEG
-                    } else {
-                        UVCCamera.FRAME_FORMAT_YUYV
-                    },
-                    UVCCamera.DEFAULT_BANDWIDTH
-                )
+                // if give custom minFps or maxFps or unsupported preview size this method will fail
+                mUvcCamera?.setPreviewSize(sz.width, sz.height, MIN_FS, MAX_FPS, fmt, UVCCamera.DEFAULT_BANDWIDTH)
+                previewSize = sz
+                opened = true
+                android.util.Log.i("ClavoUSB", "preview-size-ok size=${sz.width}x${sz.height} format=${fmtName(fmt)} requested=${reqW}x${reqH}")
+                break
             } catch (e: Exception) {
-                closeCamera()
-                postStateEvent(ICameraStateCallBack.State.ERROR, "err: ${e.localizedMessage}")
-                Logger.e(TAG, " setPreviewSize failed, even using yuv format", e)
-                return
+                lastError = e.localizedMessage
+                android.util.Log.w("ClavoUSB", "preview-size-fail size=${sz.width}x${sz.height} format=${fmtName(fmt)}: ${e.localizedMessage}")
             }
         }
+        if (!opened) {
+            closeCamera()
+            postStateEvent(
+                ICameraStateCallBack.State.ERROR,
+                if (candidates.isEmpty()) "unsupported preview size" else "err: ${lastError ?: "Failed to set preview size"}"
+            )
+            Logger.e(TAG, "open camera failed, no preview size accepted (tried ${candidates.size})")
+            return
+        }
+        mCameraRequest!!.previewWidth = previewSize.width
+        mCameraRequest!!.previewHeight = previewSize.height
+        initEncodeProcessor(previewSize.width, previewSize.height)
         // if not opengl render or opengl render with preview callback
         // there should opened
         if (! isNeedGLESRender || mCameraRequest!!.isRawPreviewData || mCameraRequest!!.isCaptureRawImage) {

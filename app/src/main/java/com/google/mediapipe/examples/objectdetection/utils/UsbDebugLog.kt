@@ -27,6 +27,43 @@ object UsbDebugLog {
         Log.i(TAG, "$event @${stamp.format(java.util.Date())} $detail".trim())
     }
 
+    private var crashLoggerInstalled = false
+
+    /**
+     * Logs "app-start" once per process (pid, launch cause, how the previous process ended) and
+     * installs an uncaught-exception logger that writes to ClavoUSB before the process dies.
+     */
+    @Synchronized
+    fun logProcessStart(ctx: Context, intent: Intent?, savedState: Boolean) {
+        val cause = when {
+            intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED -> "usb-attach-intent"
+            intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true -> "launcher"
+            else -> "other(action=${intent?.action})"
+        }
+        ev("app-start", "pid=${android.os.Process.myPid()} cause=$cause action=${intent?.action} savedState=$savedState")
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                am.getHistoricalProcessExitReasons(null, 0, 5).forEach {
+                    ev("prev-process-exit", "pid=${it.pid} reason=${it.reason} status=${it.status} importance=${it.importance} at=${stamp.format(java.util.Date(it.timestamp))} desc=${it.description}")
+                }
+            } catch (e: Exception) {
+                ev("prev-process-exit", "unavailable: ${e.javaClass.simpleName}")
+            }
+        }
+        if (!crashLoggerInstalled) {
+            crashLoggerInstalled = true
+            val previous = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { t, e ->
+                try {
+                    Log.e(TAG, "uncaught @${stamp.format(java.util.Date())} pid=${android.os.Process.myPid()} thread=${t.name}: ${Log.getStackTraceString(e)}")
+                } catch (_: Throwable) {
+                }
+                previous?.uncaughtException(t, e)
+            }
+        }
+    }
+
     fun describe(usb: UsbManager?, dev: UsbDevice): String {
         val ifaceClasses = (0 until dev.interfaceCount).joinToString(",") { dev.getInterface(it).interfaceClass.toString() }
         val perm = try { usb?.hasPermission(dev) } catch (e: Exception) { null }

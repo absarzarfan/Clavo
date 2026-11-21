@@ -97,7 +97,17 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
     private val CONNECT_TIMEOUT_MS = 5000L
     private val MAX_FAILURES = 5
     private val STABLE_FLOW_MS = 3000L
-    private val STALL_MS = 2000L              // no frame for this long while OPEN = failure
+    private val STALL_MS = 2000L              // no frame for this long in the middle of the stream = failure
+    private val FIRST_FRAME_MS = 6000L        // tolerance for the FIRST frame after OPENED
+    private val MIN_CONNECT_GAP_MS = 1000L    // never two connect starts closer than this
+    private var gotFirstFrame = false
+    private var tsAtOpen = 0L
+    private var lastConnectStartMs = 0L
+    // USB permission / libausbc connect tracking (from onUsbEvent), for TIMEOUT diagnosis
+    private var attachDevMs = 0L
+    private var requestPermMs = 0L
+    private var connectDevMs = 0L
+    private var cancelDevMs = 0L
     private val SUPPRESS_AFTER_ATTACH_MS = 3000L // libausbc auto-connect gets this long after ATTACHED
     private var lastFrameMs = 0L
     private var lastAttachedMs = 0L
@@ -148,6 +158,51 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
         }
     }
 
+    // libausbc permission/connect events: attach-dev, request-permission, connect-dev, cancel-dev.
+    override fun onUsbEvent(event: String, device: android.hardware.usb.UsbDevice?, detail: String) {
+        onMain {
+            val now = SystemClock.elapsedRealtime()
+            val name = device?.deviceName
+            UsbDebugLog.ev("usb-$event", "device=$name $detail conn=${name?.let { connStates[it] }} uiState=$uiState")
+            when (event) {
+                "attach-dev" -> attachDevMs = now
+                "request-permission" -> requestPermMs = now
+                "connect-dev" -> {
+                    connectDevMs = now
+                    if (name != null && connStates[name] != ConnState.OPEN) {
+                        connStates[name] = ConnState.CONNECTING
+                        connectStartMs = now
+                    }
+                }
+                "cancel-dev" -> {
+                    cancelDevMs = now
+                    // permission refused/dismissed (or a cancelled connect): nothing is in flight
+                    if (name != null && connStates[name] == ConnState.CONNECTING) connStates[name] = ConnState.IDLE
+                }
+            }
+        }
+    }
+
+    // Why a connect did not finish: derived from which libausbc events were seen since ATTACHED.
+    private fun timeoutReason(device: android.hardware.usb.UsbDevice?): String {
+        val perm = try {
+            (context?.getSystemService(Context.USB_SERVICE) as? UsbManager)?.let { m -> device?.let { m.hasPermission(it) } }
+        } catch (e: Exception) { null }
+        val since = lastAttachedMs
+        val attachSeen = attachDevMs >= since && attachDevMs != 0L
+        val reqSeen = requestPermMs >= since && requestPermMs != 0L
+        val connSeen = connectDevMs >= since && connectDevMs != 0L
+        val cancelSeen = cancelDevMs >= since && cancelDevMs != 0L
+        val why = when {
+            cancelSeen -> "permission denied or connection cancelled (cancel-dev)"
+            perm == false && reqSeen -> "permission dialog not answered (request-permission sent, no connect-dev)"
+            perm == false -> "no USB permission and no request-permission was sent"
+            !connSeen -> "permission held but libausbc never reported connect-dev (auto-connect did not run)"
+            else -> "connect-dev seen but camera did not reach OPENED"
+        }
+        return "$why [hasPermission=$perm attachDev=$attachSeen requestPermission=$reqSeen connectDev=$connSeen cancelDev=$cancelSeen]"
+    }
+
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
     }
@@ -176,6 +231,8 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
         openedAtMs = now
         lastFrameMs = 0L
         flowingSinceMs = 0L
+        gotFirstFrame = false
+        tsAtOpen = readFrameTimestamp()
         nextRetryAtMs = 0L
         Log.d(TAG, "USB Camera Opened")
         LatencyRecorder.activity("Webcam", "kamera_dibuka", "Webcam") // TEMP-ClavoLat
@@ -192,6 +249,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
         openedAtMs = 0L
         lastFrameMs = 0L
         flowingSinceMs = 0L
+        gotFirstFrame = false
         detectionJob?.cancel()
         _binding?.overlay?.clear()
     }
@@ -232,7 +290,12 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
         }
         failures++
         if (failures >= MAX_FAILURES) {
-            UsbDebugLog.ev("connect-gave-up", "failures=$failures reason=$reason")
+            lastErrorMessage = when {
+                reason.startsWith("frames stalled") || reason.startsWith("no first frame") -> "kamera terbuka tetapi tidak mengirim gambar"
+                reason == "timeout" -> "tidak ada respons dari webcam"
+                else -> reason
+            }
+            UsbDebugLog.ev("connect-gave-up", "failures=$failures reason=$reason -> UI asks unplug/replug; auto-recovers on next ATTACHED")
             showWebcamState(WebcamUiState.OPEN_FAILED)
             return
         }
@@ -244,9 +307,15 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
 
     private fun startConnect(device: android.hardware.usb.UsbDevice) {
         val name = device.deviceName
+        val t = SystemClock.elapsedRealtime()
+        if (lastConnectStartMs != 0L && t - lastConnectStartMs < MIN_CONNECT_GAP_MS) {
+            UsbDebugLog.ev("decision-retry-suppressed", "reason=min-connect-gap sinceLastConnectStartMs=${t - lastConnectStartMs}")
+            return
+        }
+        lastConnectStartMs = t
         connStates[name] = ConnState.CONNECTING
         currentDeviceName = name
-        connectStartMs = SystemClock.elapsedRealtime()
+        connectStartMs = t
         UsbDebugLog.ev("connect-start", "attempt=${failures + 1}/$MAX_FAILURES device=$name")
         showWebcamState(if (failures > 0) WebcamUiState.RECONNECTING else WebcamUiState.CHECKING)
         if (!connectDevice(device)) {
@@ -268,12 +337,22 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
             grantedNotOpenTicks = 0
             stopOpenState()
             connStates.clear()
-            // libausbc connects by itself on ATTACHED: count it as our one connection in flight.
-            device?.deviceName?.let {
-                connStates[it] = ConnState.CONNECTING
-                connectStartMs = now
-                UsbDebugLog.ev("decision-auto-connect", "assumed in flight device=$it (no retry for ${SUPPRESS_AFTER_ATTACH_MS}ms)")
+            // libausbc connects by itself on ATTACHED, but only when USB permission is held (or after
+            // the permission dialog is accepted, which arrives as usb-connect-dev). Without permission
+            // nothing is in flight.
+            if (device != null) {
+                val perm = try {
+                    (context?.getSystemService(Context.USB_SERVICE) as? UsbManager)?.hasPermission(device)
+                } catch (e: Exception) { null }
+                if (perm == true) {
+                    connStates[device.deviceName] = ConnState.CONNECTING
+                    connectStartMs = now
+                    UsbDebugLog.ev("decision-auto-connect", "assumed in flight device=${device.deviceName} hasPermission=true (no retry for ${SUPPRESS_AFTER_ATTACH_MS}ms)")
+                } else {
+                    UsbDebugLog.ev("decision-auto-connect", "NOT in flight device=${device.deviceName} hasPermission=$perm: waiting for the permission dialog (connect-dev will start the connect)")
+                }
             }
+            if (uiState == WebcamUiState.OPEN_FAILED) UsbDebugLog.ev("recover-on-attach", "left OPEN_FAILED because the webcam was plugged in again")
             showWebcamState(WebcamUiState.CHECKING) // no tab switch needed
         } else {
             UsbDebugLog.ev("detached-info", "sinceOpenedMs=${sinceOpenedMs()}")
@@ -309,6 +388,13 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
 
         binding.webcamRetryButton.setOnClickListener { retryWebcam() }
         showWebcamState(WebcamUiState.CHECKING)
+        @Suppress("DEPRECATION")
+        viewLifecycleOwner.lifecycleScope.launchWhenResumed {
+            while (isActive) {
+                pollFirstFrame()
+                delay(100)
+            }
+        }
         // Runs only while the fragment is resumed, so it pauses while the system USB dialog is up.
         @Suppress("DEPRECATION")
         viewLifecycleOwner.lifecycleScope.launchWhenResumed {
@@ -327,6 +413,20 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
         0L
     }
 
+    // First frame after OPENED: logs "first-frame @Nms" (ms since OPENED) once per connection.
+    private fun markFirstFrame(now: Long) {
+        if (gotFirstFrame || openedAtMs == 0L) return
+        gotFirstFrame = true
+        UsbDebugLog.ev("first-frame", "@${now - openedAtMs}ms since OPENED device=$currentDeviceName")
+    }
+
+    // Fast poll (100 ms) used only until the first frame arrives, so first-frame @Nms is precise.
+    private fun pollFirstFrame() {
+        if (!isCameraOpened || gotFirstFrame || openedAtMs == 0L) return
+        val ts = readFrameTimestamp()
+        if (ts != 0L && ts != tsAtOpen) markFirstFrame(SystemClock.elapsedRealtime())
+    }
+
     private fun evaluateWebcamStatus() {
         if (_binding == null) return
         val now = SystemClock.elapsedRealtime()
@@ -338,19 +438,24 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
         if (framesFlowing) {
             lastFrameMs = now
             if (flowingSinceMs == 0L) flowingSinceMs = now
+            markFirstFrame(now)
         } else {
             flowingSinceMs = 0L
         }
 
         if (isCameraOpened) {
             // Stall: no frame for STALL_MS while open is a failure, handled like CLOSED/ERROR.
-            val ref = maxOf(lastFrameMs, openedAtMs)
-            if (!framesFlowing && openedAtMs != 0L && now - ref >= STALL_MS) {
-                UsbDebugLog.ev("decision-stall", "no frame for ${now - ref}ms while open device=$currentDeviceName")
+            // Two limits: the first frame after OPENED may take up to FIRST_FRAME_MS; once frames have
+            // flowed, a gap of STALL_MS in the middle of the stream is a failure.
+            val limit = if (gotFirstFrame) STALL_MS else FIRST_FRAME_MS
+            val ref = if (gotFirstFrame) maxOf(lastFrameMs, openedAtMs) else openedAtMs
+            if (!framesFlowing && openedAtMs != 0L && now - ref >= limit) {
+                val kind = if (gotFirstFrame) "frames stalled" else "no first frame"
+                UsbDebugLog.ev("decision-stall", "$kind: no frame for ${now - ref}ms (limit ${limit}ms, firstFrame=$gotFirstFrame) device=$currentDeviceName")
                 stopOpenState()
                 currentDeviceName?.let { connStates[it] = ConnState.IDLE }
                 closeCurrentCamera()
-                registerFailure("frames stalled")
+                registerFailure(kind)
                 return
             }
             deniedTicks = 0
@@ -404,7 +509,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
             when (connStates[name] ?: ConnState.IDLE) {
                 ConnState.CONNECTING -> {
                     if (now - connectStartMs > CONNECT_TIMEOUT_MS) {
-                        UsbDebugLog.ev("connect-result", "TIMEOUT after ${now - connectStartMs}ms device=$name")
+                        UsbDebugLog.ev("connect-result", "TIMEOUT after ${now - connectStartMs}ms device=$name reason=${timeoutReason(granted)}")
                         connStates[name] = ConnState.IDLE
                         closeCurrentCamera()
                         registerFailure("timeout")
@@ -472,7 +577,8 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
             WebcamUiState.OPEN_FAILED ->
                 "Webcam gagal tersambung setelah $MAX_FAILURES percobaan" +
                     (lastErrorMessage?.let { " ($it)" } ?: "") +
-                    ". Periksa kabel/adaptor OTG lalu tekan \"Coba lagi\"."
+                    ". Cabut lalu colok ulang webcam (dan adaptor OTG); aplikasi akan menyambung otomatis " +
+                    "begitu webcam terdeteksi lagi. Atau tekan \"Coba lagi\"."
             WebcamUiState.RECONNECTING ->
                 "Menyambung ulang... (percobaan ${failures + 1} dari $MAX_FAILURES)"
             WebcamUiState.ERROR ->
