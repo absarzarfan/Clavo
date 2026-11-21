@@ -7,6 +7,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.usb.UsbDevice
 import android.os.*
 import android.view.Surface
+import android.view.View
 import com.jiangdg.ausbc.callback.*
 import com.jiangdg.ausbc.camera.bean.CameraRequest
 import com.jiangdg.ausbc.camera.bean.PreviewSize
@@ -344,19 +345,10 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
                         // use opengl render
                         // if surface is null, force off screen render whatever mode
                         // and use init preview size（measure size） for render size
-                        // Modified 2026-11-21 by Absar Rakha Zarfan: no 2 s wait for a size event
-                        // (it never comes when the view is already laid out). Use the view's
-                        // measured size, else the last size that worked, else 1080x810.
-                        val viewW = view?.getSurfaceWidth() ?: 0
-                        val viewH = view?.getSurfaceHeight() ?: 0
-                        val measureSize = if (viewW > 0 && viewH > 0) {
-                            lastSurfaceW = viewW
-                            lastSurfaceH = viewH
-                            Pair(viewW, viewH)
-                        } else {
-                            Pair(if (lastSurfaceW > 0) lastSurfaceW else 1080, if (lastSurfaceH > 0) lastSurfaceH else 810)
-                        }
-                        Logger.i(TAG, "surface size $measureSize (no wait)")
+                        // Modified 2026-11-21 by Absar Rakha Zarfan: no 2 s wait for a size event, and the
+                        // render size is derived from the preview ratio (not from a stale measurement).
+                        val measureSize = computeRenderSize(view as? View, previewWidth, previewHeight)
+                        logRenderSize("preview-ratio", measureSize.first, measureSize.second, previewWidth, previewHeight)
                         mCameraRequest!!.renderMode = CameraRequest.RenderMode.OPENGL
                         val screenWidth = measureSize.first
                         val screenHeight = measureSize.second
@@ -603,6 +595,63 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
          */
         fun setRenderSize(width: Int, height: Int) {
             mSizeChangedFuture?.set(Pair(width, height))
+            // Modified 2026-11-21 by Absar Rakha Zarfan: the view's real surface size reaches the
+            // renderer (it used to be dropped), so a relayout never leaves a stale viewport.
+            if (width > 0 && height > 0 && mRenderManager != null) {
+                logRenderSize("surface-changed", width, height, mCameraRequest?.previewWidth ?: 0, mCameraRequest?.previewHeight ?: 0)
+                mRenderManager?.setRenderSize(width, height)
+            }
+        }
+
+        /**
+         * Modified 2026-11-21 by Absar Rakha Zarfan.
+         * Render size = view fitted into its container at the preview ratio (same rule as
+         * AspectRatioTextureView.onMeasure), e.g. 1080x810 for 640x480, 1080x608 for 1280x720.
+         */
+        protected fun computeRenderSize(view: View?, pw: Int, ph: Int): Pair<Int, Int> {
+            val ratio = if (pw > 0 && ph > 0) pw.toDouble() / ph else 4.0 / 3.0
+            val parent = view?.parent as? View
+            val cw = parent?.width ?: 0
+            val ch = parent?.height ?: 0
+            if (cw > 0 && ch > 0) {
+                lastContainerW = cw
+                lastContainerH = ch
+            }
+            val w = if (cw > 0) cw else if (lastContainerW > 0) lastContainerW else if (lastSurfaceW > 0) lastSurfaceW else 1080
+            val h = if (ch > 0) ch else if (lastContainerH > 0) lastContainerH else 0
+            val out = if (h > 0 && ratio <= w.toDouble() / h) {
+                Pair((h * ratio).toInt(), h)
+            } else {
+                Pair(w, (w / ratio).toInt())
+            }
+            lastSurfaceW = out.first
+            lastSurfaceH = out.second
+            return out
+        }
+
+        /**
+         * Modified 2026-11-21 by Absar Rakha Zarfan: after a successful open, adapt view ratio and
+         * render size to the preview size that was really accepted, without closing the camera.
+         */
+        protected fun applyAcceptedPreviewSize(pw: Int, ph: Int, requestedW: Int, requestedH: Int) {
+            val view = mCameraView
+            if (view is IAspectRatio && mCameraRequest?.isAspectRatioShow == true) view.setAspectRatio(pw, ph)
+            if (!isNeedGLESRender || mRenderManager == null) return
+            val size = computeRenderSize(view as? View, pw, ph)
+            val changed = pw != requestedW || ph != requestedH
+            logRenderSize(if (changed) "preview-changed" else "preview-ok", size.first, size.second, pw, ph)
+            mRenderManager?.setRenderSize(size.first, size.second)
+        }
+
+        private fun logRenderSize(source: String, w: Int, h: Int, pw: Int, ph: Int) {
+            android.util.Log.i("ClavoUSB", "render-size source=$source size=${w}x$h preview=${pw}x$ph device=${device.deviceName}")
+            if (w > 0 && h > 0 && pw > 0 && ph > 0) {
+                val rr = w.toDouble() / h
+                val pr = pw.toDouble() / ph
+                if (Math.abs(rr / pr - 1.0) > 0.02) {
+                    android.util.Log.w("ClavoUSB", "render-size-warning ratio render=${"%.3f".format(rr)} preview=${"%.3f".format(pr)} differ>2% source=$source size=${w}x$h preview=${pw}x$ph")
+                }
+            }
         }
 
         /**
@@ -1106,6 +1155,8 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         private const val OPEN_STALE_MS = 8000L // Modified 2026-11-21 by Absar Rakha Zarfan
         @Volatile private var lastSurfaceW = 0
         @Volatile private var lastSurfaceH = 0
+        @Volatile private var lastContainerW = 0
+        @Volatile private var lastContainerH = 0
         private const val MSG_STOP_PREVIEW = 0x02
         private const val MSG_CAPTURE_IMAGE = 0x03
         private const val MSG_CAPTURE_VIDEO_START = 0x04

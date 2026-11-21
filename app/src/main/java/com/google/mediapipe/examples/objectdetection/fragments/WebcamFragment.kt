@@ -101,6 +101,10 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
     private val FIRST_FRAME_MS = 6000L        // tolerance for the FIRST frame after OPENED
     private val MIN_CONNECT_GAP_MS = 1000L    // never two connect starts closer than this
     private var gotFirstFrame = false
+    // Consecutive "no first frame" failures on the same device without a DETACHED in between.
+    private var noFrameStreak = 0
+    private var noFrameStreakDevice: String? = null
+    private var noFrameGaveUp = false
     private var tsAtOpen = 0L
     private var lastConnectStartMs = 0L
     // USB permission / libausbc connect tracking (from onUsbEvent), for TIMEOUT diagnosis
@@ -328,6 +332,9 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
     private fun onUsbAttachDetach(attached: Boolean, device: android.hardware.usb.UsbDevice?) {
         if (!viewAlive) return
         val now = SystemClock.elapsedRealtime()
+        noFrameStreak = 0
+        noFrameStreakDevice = null
+        noFrameGaveUp = false
         if (attached) {
             lastAttachedMs = now
             failures = 0
@@ -417,6 +424,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
     private fun markFirstFrame(now: Long) {
         if (gotFirstFrame || openedAtMs == 0L) return
         gotFirstFrame = true
+        noFrameStreak = 0
         UsbDebugLog.ev("first-frame", "@${now - openedAtMs}ms since OPENED device=$currentDeviceName")
     }
 
@@ -450,11 +458,28 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
             val limit = if (gotFirstFrame) STALL_MS else FIRST_FRAME_MS
             val ref = if (gotFirstFrame) maxOf(lastFrameMs, openedAtMs) else openedAtMs
             if (!framesFlowing && openedAtMs != 0L && now - ref >= limit) {
+                val gotFirstFrameBefore = gotFirstFrame
                 val kind = if (gotFirstFrame) "frames stalled" else "no first frame"
                 UsbDebugLog.ev("decision-stall", "$kind: no frame for ${now - ref}ms (limit ${limit}ms, firstFrame=$gotFirstFrame) device=$currentDeviceName")
                 stopOpenState()
-                currentDeviceName?.let { connStates[it] = ConnState.IDLE }
+                val dev = currentDeviceName
+                dev?.let { connStates[it] = ConnState.IDLE }
                 closeCurrentCamera()
+                if (!gotFirstFrameBefore) {
+                    if (noFrameStreakDevice != dev) noFrameStreak = 0
+                    noFrameStreakDevice = dev
+                    noFrameStreak++
+                    if (noFrameStreak >= 2) {
+                        // Retrying does not recover this state (only a replug does): stop here.
+                        noFrameGaveUp = true
+                        failures = MAX_FAILURES
+                        nextRetryAtMs = 0L
+                        lastErrorMessage = "kamera terbuka tetapi tidak mengirim gambar"
+                        UsbDebugLog.ev("connect-gave-up", "reason=no first frame x$noFrameStreak on $dev without DETACHED -> UI asks unplug/replug; auto-recovers on next ATTACHED")
+                        showWebcamState(WebcamUiState.OPEN_FAILED)
+                        return
+                    }
+                }
                 registerFailure(kind)
                 return
             }
@@ -543,6 +568,9 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
     }
 
     private fun retryWebcam() {
+        noFrameStreak = 0
+        noFrameStreakDevice = null
+        noFrameGaveUp = false
         deniedTicks = 0
         grantedNotOpenTicks = 0
         failures = 0
@@ -574,7 +602,10 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
             WebcamUiState.PERMISSION_DENIED ->
                 "Izin USB untuk webcam ditolak, jadi webcam tidak bisa dibuka. " +
                     "Tekan \"Coba lagi\" lalu pilih Izinkan."
-            WebcamUiState.OPEN_FAILED ->
+            WebcamUiState.OPEN_FAILED -> if (noFrameGaveUp)
+                "Webcam terbuka tetapi tidak mengirim gambar. Cabut dan colok ulang webcam " +
+                    "(dan adaptor OTG); aplikasi akan menyambung otomatis begitu webcam terdeteksi lagi."
+            else
                 "Webcam gagal tersambung setelah $MAX_FAILURES percobaan" +
                     (lastErrorMessage?.let { " ($it)" } ?: "") +
                     ". Cabut lalu colok ulang webcam (dan adaptor OTG); aplikasi akan menyambung otomatis " +

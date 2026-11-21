@@ -200,6 +200,7 @@ class CameraUVC(ctx: Context, device: UsbDevice) : MultiCameraClient.ICamera(ctx
         }
         mCameraRequest!!.previewWidth = previewSize.width
         mCameraRequest!!.previewHeight = previewSize.height
+        applyAcceptedPreviewSize(previewSize.width, previewSize.height, reqW, reqH)
         initEncodeProcessor(previewSize.width, previewSize.height)
         // if not opengl render or opengl render with preview callback
         // there should opened
