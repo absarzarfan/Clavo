@@ -21,7 +21,7 @@
  *  may have a different license, see the respective files.
  */
 
-// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix.
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix, session ids, off-main close, no surface-size wait.
 package com.jiangdg.usb;
 
 import android.annotation.SuppressLint;
@@ -147,7 +147,7 @@ public final class USBMonitor {
 					for (final UsbDevice key: keys) {
 						ctrlBlock = mCtrlBlocks.remove(key);
 						if (ctrlBlock != null) {
-							ctrlBlock.close();
+							ctrlBlock.closeAsync(false); // Modified 2026-11-21 by Absar Rakha Zarfan
 						}
 					}
 				} catch (final Exception e) {
@@ -227,6 +227,20 @@ public final class USBMonitor {
 			mPermissionIntent = null;
 		}
 	}
+
+	/** Modified 2026-11-21 by Absar Rakha Zarfan */
+	public boolean isDestroyed() {
+		return destroyed;
+	}
+
+	/** Modified 2026-11-21 by Absar Rakha Zarfan: USB connections are closed here, never on main. */
+	private static final java.util.concurrent.ExecutorService CLOSER =
+			java.util.concurrent.Executors.newSingleThreadExecutor(new java.util.concurrent.ThreadFactory() {
+				@Override
+				public Thread newThread(final Runnable r) {
+					return new Thread(r, "usb-closer");
+				}
+			});
 
 	public synchronized boolean isRegistered() {
 		return !destroyed && (mPermissionIntent != null);
@@ -540,11 +554,12 @@ public final class USBMonitor {
 				// when device removed
 				final UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 				if (device != null) {
-					UsbControlBlock ctrlBlock = mCtrlBlocks.remove(device);
-					if (ctrlBlock != null) {
-						// cleanup
-						ctrlBlock.close();
-					}
+						UsbControlBlock ctrlBlock = mCtrlBlocks.remove(device);
+						if (ctrlBlock != null) {
+							// cleanup: tell the listener first (the camera stops its stream), close
+							// the connection afterwards on a worker thread (Modified 2026-11-21 by Absar Rakha Zarfan)
+							ctrlBlock.closeAsync(true);
+						}
 					mDeviceCounts = 0;
 					processDettach(device);
 				}
@@ -611,6 +626,7 @@ public final class USBMonitor {
 		if (destroyed) return;
 		updatePermission(device, true);
 		mAsyncHandler.post(() -> {
+			if (destroyed) return; // Modified 2026-11-21 by Absar Rakha Zarfan
 			if (DEBUG) XLogWrapper.v(TAG, "processConnect:device=" + device.getDeviceName());
 			UsbControlBlock ctrlBlock;
 			final boolean createNew;
@@ -1021,6 +1037,9 @@ public final class USBMonitor {
 		private final WeakReference<USBMonitor> mWeakMonitor;
 		private final WeakReference<UsbDevice> mWeakDevice;
 		protected UsbDeviceConnection mConnection;
+		// Modified 2026-11-21 by Absar Rakha Zarfan
+		private volatile Runnable mPreCloseHook;
+		private volatile boolean mDisconnectNotified;
 		protected final UsbDeviceInfo mInfo;
 		private final int mBusNum;
 		private final int mDevNum;
@@ -1368,6 +1387,44 @@ public final class USBMonitor {
 			mConnection.releaseInterface(intf);
 		}
 
+		/** Modified 2026-11-21 by Absar Rakha Zarfan: run before the connection is closed. */
+		public void setPreCloseHook(final Runnable hook) {
+			mPreCloseHook = hook;
+		}
+
+		/**
+		 * Modified 2026-11-21 by Absar Rakha Zarfan: order = (1) tell the listener so the camera
+		 * stops its stream, (2) on a worker thread wait (hook, <= 1 s) for the stream to stop, then
+		 * close the connection. The calling thread never waits.
+		 */
+		public void closeAsync(final boolean notify) {
+			final USBMonitor monitor = mWeakMonitor.get();
+			if (!mDisconnectNotified) {
+				mDisconnectNotified = true;
+				if (notify && mConnection != null && monitor != null && monitor.mOnDeviceConnectListener != null) {
+					try {
+						monitor.mOnDeviceConnectListener.onDisconnect(mWeakDevice.get(), UsbControlBlock.this);
+					} catch (final Exception e) {
+						XLogWrapper.w(TAG, e);
+					}
+				}
+			}
+			CLOSER.execute(new Runnable() {
+				@Override
+				public void run() {
+					final Runnable hook = mPreCloseHook;
+					if (hook != null) {
+						try {
+							hook.run();
+						} catch (final Throwable t) {
+							XLogWrapper.w(TAG, t);
+						}
+					}
+					close();
+				}
+			});
+		}
+
 		/**
 		 * Close device
 		 * This also close interfaces if they are opened in Java side
@@ -1392,10 +1449,11 @@ public final class USBMonitor {
 				mConnection.close();
 				mConnection = null;
 				final USBMonitor monitor = mWeakMonitor.get();
-				if (monitor != null) {
-					if (monitor.mOnDeviceConnectListener != null) {
-						monitor.mOnDeviceConnectListener.onDisconnect(mWeakDevice.get(), UsbControlBlock.this);
-					}
+					if (monitor != null) {
+						if (!mDisconnectNotified && monitor.mOnDeviceConnectListener != null) {
+							mDisconnectNotified = true;
+							monitor.mOnDeviceConnectListener.onDisconnect(mWeakDevice.get(), UsbControlBlock.this);
+						}
 					monitor.mCtrlBlocks.remove(getDevice());
 				}
 			}

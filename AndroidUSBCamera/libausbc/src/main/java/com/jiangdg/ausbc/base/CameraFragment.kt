@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix.
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix, session ids, off-main close, no surface-size wait.
 package com.jiangdg.ausbc.base
 
 import android.content.Context
@@ -162,13 +162,21 @@ abstract class CameraFragment : BaseFragment(), ICameraStateCallBack {
     }
 
     protected fun unRegisterMultiCamera() {
-        mCameraMap.values.forEach {
+        // Modified 2026-11-21 by Absar Rakha Zarfan: stop the streams first, then close the USB
+        // connections on a worker thread (never block the main thread on UsbDeviceConnection.close).
+        val cams = mCameraMap.values.toList()
+        cams.forEach {
             it.closeCamera()
+            it.invalidate()
         }
         mCameraMap.clear()
-        mCameraClient?.unRegister()
-        mCameraClient?.destroy()
+        val client = mCameraClient
         mCameraClient = null
+        client?.unRegister()
+        Thread({
+            cams.forEach { it.awaitStopped(1000) }
+            client?.destroy()
+        }, "usb-destroy").start()
     }
 
     protected fun getDeviceList() = mCameraClient?.getDeviceList()

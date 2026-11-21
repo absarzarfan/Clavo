@@ -1,4 +1,4 @@
-// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix.
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix, session ids, off-main close, no surface-size wait.
 package com.jiangdg.ausbc
 
 import android.content.Context
@@ -285,6 +285,14 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         // 0 = idle, 1 = opening, 2 = opened. An "opening" older than OPEN_STALE_MS counts as idle.
         @Volatile private var mOpenState = 0
         @Volatile private var mOpenStartMs = 0L
+        // Session id: +1 on every accepted openCamera. Every state event is stamped with the id it
+        // was posted under; the callback reads it through eventSessionId (valid inside the callback).
+        @Volatile private var mSessionId = 0
+        @Volatile var eventSessionId = 0
+            private set
+        // An invalidated camera (its client was torn down) never delivers state events again.
+        @Volatile private var mInvalid = false
+        private val mStoppingThreads = CopyOnWriteArrayList<HandlerThread>()
         protected var mCameraRequest: CameraRequest? = null
         protected var mCameraHandler: Handler? = null
         protected var isPreviewed: Boolean = false
@@ -336,17 +344,22 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
                         // use opengl render
                         // if surface is null, force off screen render whatever mode
                         // and use init preview size（measure size） for render size
-                        val measureSize = try {
-                            mSizeChangedFuture = SettableFuture()
-                            mSizeChangedFuture?.get(2000, TimeUnit.MILLISECONDS)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            null
+                        // Modified 2026-11-21 by Absar Rakha Zarfan: no 2 s wait for a size event
+                        // (it never comes when the view is already laid out). Use the view's
+                        // measured size, else the last size that worked, else 1080x810.
+                        val viewW = view?.getSurfaceWidth() ?: 0
+                        val viewH = view?.getSurfaceHeight() ?: 0
+                        val measureSize = if (viewW > 0 && viewH > 0) {
+                            lastSurfaceW = viewW
+                            lastSurfaceH = viewH
+                            Pair(viewW, viewH)
+                        } else {
+                            Pair(if (lastSurfaceW > 0) lastSurfaceW else 1080, if (lastSurfaceH > 0) lastSurfaceH else 810)
                         }
-                        Logger.i(TAG, "surface measure size $measureSize")
+                        Logger.i(TAG, "surface size $measureSize (no wait)")
                         mCameraRequest!!.renderMode = CameraRequest.RenderMode.OPENGL
-                        val screenWidth = view?.getSurfaceWidth() ?: previewWidth
-                        val screenHeight = view?.getSurfaceHeight() ?: previewHeight
+                        val screenWidth = measureSize.first
+                        val screenHeight = measureSize.second
                         val surface = view?.getSurface()
                         val previewCb = if (isRawPreviewData) {
                             null
@@ -655,9 +668,44 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
                 ICameraStateCallBack.State.OPENED -> mOpenState = 2
                 ICameraStateCallBack.State.ERROR, ICameraStateCallBack.State.CLOSED -> mOpenState = 0
             }
+            if (mInvalid) {
+                Logger.w(TAG, "state event $state dropped: camera was invalidated")
+                return
+            }
+            val sid = mSessionId
             mMainHandler.post {
+                if (mInvalid) return@post
+                eventSessionId = sid
                 mCameraStateCallback?.onCameraState(this, state, msg)
             }
+        }
+
+        /** Latest session id (the one of the most recent accepted openCamera). */
+        fun getLatestSessionId(): Int = mSessionId
+
+        /** The owner (client) of this camera was torn down: no more state events, no more opens. */
+        fun invalidate() {
+            mInvalid = true
+        }
+
+        /**
+         * Waits (at most [timeoutMs] in total) for camera threads that were told to stop to finish.
+         * Never call on the main thread for long: callers pass <= 1000 ms and use a worker thread.
+         */
+        fun awaitStopped(timeoutMs: Long) {
+            val deadline = SystemClock.elapsedRealtime() + timeoutMs
+            for (t in mStoppingThreads) {
+                if (t === Thread.currentThread()) continue
+                val left = deadline - SystemClock.elapsedRealtime()
+                if (left <= 0) break
+                try {
+                    t.join(left)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            mStoppingThreads.removeAll { !it.isAlive }
         }
 
         /**
@@ -667,6 +715,12 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
          */
         fun setUsbControlBlock(ctrlBlock: USBMonitor.UsbControlBlock?) {
             this.mCtrlBlock = ctrlBlock
+            // Before USBMonitor closes the USB connection (on its own background thread) the
+            // stream must be stopped: stop the camera and wait for its thread, at most 1 s.
+            ctrlBlock?.setPreCloseHook(Runnable {
+                closeCamera()
+                awaitStopped(1000)
+            })
         }
 
         /**
@@ -702,6 +756,10 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         fun <T> openCamera(cameraView: T? = null, cameraRequest: CameraRequest? = null) {
             // Modified 2026-11-21 by Absar Rakha Zarfan: a second open of the same camera (for
             // example a duplicate connect callback) must not start a second UVC session.
+            if (mInvalid) {
+                Logger.w(TAG, "openCamera ignored: camera was invalidated")
+                return
+            }
             synchronized(this) {
                 val now = SystemClock.elapsedRealtime()
                 if (mOpenState == 2 ||
@@ -712,12 +770,14 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
                 }
                 mOpenState = 1
                 mOpenStartMs = now
+                mSessionId++
             }
             mCameraView = cameraView ?: mCameraView
             mCameraRequest = cameraRequest ?: getDefaultCameraRequest()
             // Modified 2026-11-21 by Absar Rakha Zarfan: stop a previous camera thread instead of
             // overwriting (and leaking) it.
             mCameraThread?.let { old ->
+                mStoppingThreads.add(old)
                 mCameraHandler?.obtainMessage(MSG_STOP_PREVIEW)?.sendToTarget()
                 old.quitSafely()
                 mCameraThread = null
@@ -737,8 +797,10 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         /**
          * Close camera
          */
+        @Synchronized
         fun closeCamera() {
             mOpenState = 0 // Modified 2026-11-21 by Absar Rakha Zarfan
+            mCameraThread?.let { mStoppingThreads.add(it) }
             mCameraHandler?.obtainMessage(MSG_STOP_PREVIEW)?.sendToTarget()
             mCameraThread?.quitSafely()
             mCameraThread = null
@@ -1042,6 +1104,8 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         private const val TAG = "MultiCameraClient"
         private const val MSG_START_PREVIEW = 0x01
         private const val OPEN_STALE_MS = 8000L // Modified 2026-11-21 by Absar Rakha Zarfan
+        @Volatile private var lastSurfaceW = 0
+        @Volatile private var lastSurfaceH = 0
         private const val MSG_STOP_PREVIEW = 0x02
         private const val MSG_CAPTURE_IMAGE = 0x03
         private const val MSG_CAPTURE_VIDEO_START = 0x04

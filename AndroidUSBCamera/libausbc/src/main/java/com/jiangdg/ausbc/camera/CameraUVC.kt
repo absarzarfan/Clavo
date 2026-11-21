@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix, session ids, off-main close, no surface-size wait.
 package com.jiangdg.ausbc.camera
 
 import android.content.ContentValues
@@ -128,6 +129,7 @@ class CameraUVC(ctx: Context, device: UsbDevice) : MultiCameraClient.ICamera(ctx
             closeCamera()
             postStateEvent(ICameraStateCallBack.State.ERROR, "open camera failed ${e.localizedMessage}")
             Logger.e(TAG, "open camera failed.", e)
+            return // Modified 2026-11-21 by Absar Rakha Zarfan: one failure = one ERROR
         }
 
         // 2. set preview size and register preview callback
