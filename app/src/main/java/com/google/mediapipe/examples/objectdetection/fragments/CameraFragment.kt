@@ -40,6 +40,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.whenStarted
 import androidx.navigation.Navigation
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.mediapipe.examples.objectdetection.MainViewModel
@@ -60,7 +61,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
+class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener,
+    com.google.mediapipe.examples.objectdetection.utils.RotatableScreen {
 
     private val TAG = "ObjectDetection"
 
@@ -100,6 +102,8 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             val analyzer = imageAnalyzer
             if (analyzer != null) {
                 backgroundExecutor.execute {
+                    // Paused again before this ran: do not create a detector nor attach frames.
+                    if (!isResumed) return@execute
                     objectDetectorHelper.setupObjectDetector()
                     analyzer.setAnalyzer(
                         backgroundExecutor,
@@ -122,12 +126,9 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             viewModel.setThreshold(objectDetectorHelper.threshold)
             viewModel.setMaxResults(objectDetectorHelper.maxResults)
 
-            // 2) Close the detector on the executor, after any in-flight analyzer task finishes.
-            if (this::backgroundExecutor.isInitialized && !backgroundExecutor.isShutdown) {
-                backgroundExecutor.execute { objectDetectorHelper.clearObjectDetector() }
-            } else {
-                objectDetectorHelper.clearObjectDetector()
-            }
+            // 2) Queue the close on the shared detector queue right now (non-blocking). The next
+            //    tab's detector is created on the same queue, so it can only start after this close.
+            objectDetectorHelper.clearObjectDetectorAsync()
         }
     }
 
@@ -186,7 +187,9 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         // view is destroyed.
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
             try {
-                initializeDetectorAndCamera()
+                // Debounce quick tab switching, and only build the detector while visible.
+                kotlinx.coroutines.delay(300)
+                viewLifecycleOwner.lifecycle.whenStarted { initializeDetectorAndCamera() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -313,20 +316,13 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         }
     }
 
-    // "Putar" button: each tap cycles 0 -> 90 -> 180 -> 270 -> 0. The value is saved per mode.
+    // Manual rotation state and its listeners. The "Putar" button lives in the header
+    // (MainActivity) and calls rotateNext().
     private fun initRotationControl() {
         val b = fragmentCameraBinding
-        val btn = b.bottomSheetLayout.btnRotate
-        btn.visibility = View.VISIBLE // hidden by default in the shared sheet; only Camera shows it
         cameraRotation = DetectionPrefs.getRotation(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA)
-        btn.text = "Putar ${cameraRotation}°"
-        btn.contentDescription = "Putar $cameraRotation derajat"
         Log.i("ClavoDet", "[Camera] manual rotation=$cameraRotation") // TEMP-ClavoDet
         LatencyRecorder.setRotation("Camera", cameraRotation) // TEMP-ClavoLat
-        // Fixed width: wide enough for the longest label so the spinner beside it never shifts.
-        btn.minWidth = Math.ceil(
-            (btn.paint.measureText("Putar 270°") + btn.paddingLeft + btn.paddingRight + 2f).toDouble()
-        ).toInt()
         // Layout listeners fire in the middle of a layout pass, when the bottom sheet has not yet
         // been moved into place by its behaviour (its top is still the raw layout position), so
         // they must not read the sheet themselves: they only schedule an update that runs after
@@ -339,32 +335,66 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
         val sheet = b.bottomSheetLayout.root
         sheet.addOnLayoutChangeListener { _, _, t, _, bt, _, ot, _, ob ->
             if (t != ot || bt != ob) scheduleTransformUpdate()
+            if (bt - t != ob - ot) sheet.post { applySheetLock() } // sheet height changed while locked
         }
         com.google.android.material.bottomsheet.BottomSheetBehavior.from(sheet).setBottomSheetCallback(
             object : com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback() {
-                override fun onStateChanged(bottomSheet: View, newState: Int) = applyRotationTransform()
+                override fun onStateChanged(bottomSheet: View, newState: Int) {
+                    // Locked open at 90/270: a drag or collapse snaps straight back.
+                    if (isSheetLocked() && newState != com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED &&
+                        newState != com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_SETTLING
+                    ) {
+                        bottomSheet.post { applySheetLock() }
+                    }
+                    applyRotationTransform()
+                }
+
                 override fun onSlide(bottomSheet: View, slideOffset: Float) = applyRotationTransform()
             }
         )
         applyRotationTransform()
         scheduleTransformUpdate() // start/restore: the first real values exist only after the first layout
+        sheet.post { applySheetLock() }
         if (GeoLog.enabled) { // TEMP-ClavoGeo
             b.root.post { geoSnapshot("awal") } // TEMP-ClavoGeo
             b.root.postDelayed(geoTicker, 5000L) // TEMP-ClavoGeo
         } // TEMP-ClavoGeo
-        btn.setOnClickListener {
-            val rot = FrameMapping.nextRotation(cameraRotation)
-            cameraRotation = rot
-            DetectionPrefs.setRotation(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA, rot)
-            if (this::objectDetectorHelper.isInitialized) objectDetectorHelper.manualRotation = rot
-            btn.text = "Putar ${rot}°"
-            btn.contentDescription = "Putar $rot derajat"
-            Log.i("ClavoDet", "[Camera] manual rotation=$rot") // TEMP-ClavoDet
-            LatencyRecorder.setRotation("Camera", rot) // TEMP-ClavoLat
-            applyRotationTransform()
-            scheduleTransformUpdate() // the new label re-lays out the sheet: re-apply once it settles
-            b.overlay.clear("klik Putar")
-            b.root.post { geoSnapshot("sudut berubah") } // TEMP-ClavoGeo
+    }
+
+    // Called by the header button: 0 -> 90 -> 180 -> 270 -> 0. Saved per mode.
+    override fun rotateNext(): Int {
+        val b = _fragmentCameraBinding ?: return cameraRotation
+        val rot = FrameMapping.nextRotation(cameraRotation)
+        cameraRotation = rot
+        DetectionPrefs.setRotation(requireContext().applicationContext, DetectionPrefs.MODE_CAMERA, rot)
+        if (this::objectDetectorHelper.isInitialized) objectDetectorHelper.manualRotation = rot
+        Log.i("ClavoDet", "[Camera] manual rotation=$rot") // TEMP-ClavoDet
+        LatencyRecorder.setRotation("Camera", rot) // TEMP-ClavoLat
+        applySheetLock()
+        applyRotationTransform()
+        scheduleTransformUpdate()
+        b.overlay.clear("klik Putar")
+        b.root.post { geoSnapshot("sudut berubah") } // TEMP-ClavoGeo
+        return rot
+    }
+
+    private fun isSheetLocked() = cameraRotation % 180 != 0
+
+    // At 90/270 the bottom panel is locked open (boxes were not drawn when it was collapsed);
+    // at 0/180 it works as before. Locking = peek height equal to the full sheet height, so
+    // collapsed and expanded are the same position; unlocking restores the normal peek height.
+    private fun applySheetLock() {
+        val b = _fragmentCameraBinding ?: return
+        val sheet = b.bottomSheetLayout.root
+        val behavior = com.google.android.material.bottomsheet.BottomSheetBehavior.from(sheet)
+        if (isSheetLocked()) {
+            if (sheet.height > 0 && behavior.peekHeight != sheet.height) behavior.peekHeight = sheet.height
+            if (behavior.state != com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED) {
+                behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+            }
+        } else {
+            val normal = resources.getDimensionPixelSize(R.dimen.bottom_sheet_peek_height)
+            if (behavior.peekHeight != normal) behavior.peekHeight = normal
         }
     }
 
@@ -492,11 +522,7 @@ class CameraFragment : Fragment(), ObjectDetectorHelper.DetectorListener {
             this::backgroundExecutor.isInitialized &&
             !backgroundExecutor.isShutdown
         ) {
-            backgroundExecutor.execute {
-                objectDetectorHelper.threshold = value
-                objectDetectorHelper.clearObjectDetector()
-                objectDetectorHelper.setupObjectDetector()
-            }
+            backgroundExecutor.execute { objectDetectorHelper.updateThreshold(value) }
             _fragmentCameraBinding?.overlay?.clear("ambang")
         }
     }

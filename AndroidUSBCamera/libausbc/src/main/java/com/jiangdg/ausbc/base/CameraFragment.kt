@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix.
 package com.jiangdg.ausbc.base
 
 import android.content.Context
@@ -244,6 +245,26 @@ abstract class CameraFragment : BaseFragment(), ICameraStateCallBack {
     protected fun requestPermission(device: UsbDevice?) {
         mRequestPermission.set(true)
         mCameraClient?.requestPermission(device)
+    }
+
+    /**
+     * Connect a device that already has permission (no permission request).
+     * Modified 2026-11-21 by Absar Rakha Zarfan.
+     */
+    protected fun connectDevice(device: UsbDevice?): Boolean {
+        mRequestPermission.set(true)
+        return mCameraClient?.connectDevice(device) == true
+    }
+
+    /**
+     * Close the current camera, if any. Modified 2026-11-21 by Absar Rakha Zarfan.
+     */
+    protected fun closeCurrentCamera() {
+        try {
+            mCurrentCamera?.get(0, TimeUnit.MILLISECONDS)?.closeCamera()
+        } catch (e: Exception) {
+            // no current camera
+        }
     }
 
     /**

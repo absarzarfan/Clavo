@@ -19,6 +19,7 @@ package com.google.mediapipe.examples.objectdetection
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.viewModels
@@ -26,6 +27,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.google.mediapipe.examples.objectdetection.databinding.ActivityMainBinding
+import com.google.mediapipe.examples.objectdetection.utils.DetectionPrefs
+import com.google.mediapipe.examples.objectdetection.utils.RotatableScreen
 import com.google.mediapipe.examples.objectdetection.utils.UsbDebugLog // TEMP-ClavoUSB
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
@@ -59,6 +62,48 @@ class MainActivity : AppCompatActivity() {
         activityMainBinding.navigation.setOnNavigationItemReselectedListener {
             // ignore the reselection
         }
+
+        // Header "Putar" button: shown on Camera and Webcam only; its label always follows the
+        // stored rotation of the active tab (also after a tab change or activity re-creation).
+        navController.addOnDestinationChangedListener { _, _, _ -> refreshRotateButton() }
+        activityMainBinding.btnRotateHeader.setOnClickListener {
+            val screen = navHostFragment.childFragmentManager.primaryNavigationFragment as? RotatableScreen
+            if (screen != null) {
+                setRotateLabel(screen.rotateNext())
+            }
+        }
+        refreshRotateButton()
+    }
+
+    private fun currentRotationMode(): String? {
+        val navHostFragment =
+            supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment ?: return null
+        return when (navHostFragment.navController.currentDestination?.id) {
+            R.id.camera_fragment -> DetectionPrefs.MODE_CAMERA
+            R.id.webcam_fragment -> DetectionPrefs.MODE_WEBCAM
+            else -> null
+        }
+    }
+
+    // Shows the button with the stored rotation of the active tab, or hides it on other screens.
+    fun refreshRotateButton() {
+        val mode = currentRotationMode()
+        if (mode == null) {
+            activityMainBinding.btnRotateHeader.visibility = View.GONE
+            return
+        }
+        activityMainBinding.btnRotateHeader.visibility = View.VISIBLE
+        setRotateLabel(DetectionPrefs.getRotation(applicationContext, mode))
+    }
+
+    private fun setRotateLabel(degrees: Int) {
+        activityMainBinding.txtRotateHeader.text = "${degrees}°"
+        activityMainBinding.btnRotateHeader.contentDescription = "Putar tampilan, $degrees derajat"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshRotateButton()
     }
 
     // launchMode=singleTask: a USB_DEVICE_ATTACHED while the app is open lands here instead of

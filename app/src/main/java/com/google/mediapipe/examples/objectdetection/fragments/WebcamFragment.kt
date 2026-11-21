@@ -8,14 +8,15 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.view.View.OnLayoutChangeListener
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.SeekBar
 import com.google.mediapipe.examples.objectdetection.databinding.InfoBottomSheetBinding
 import com.google.mediapipe.examples.objectdetection.utils.DetectionPrefs
 import com.google.mediapipe.examples.objectdetection.utils.FrameMapping
 import com.google.mediapipe.examples.objectdetection.utils.ThresholdScale
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -26,6 +27,7 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.whenStarted
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.mediapipe.examples.objectdetection.MainViewModel
 import com.google.mediapipe.examples.objectdetection.ObjectDetectorHelper
@@ -50,7 +52,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
+class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener,
+    com.google.mediapipe.examples.objectdetection.utils.RotatableScreen {
     private val TAG = "ObjectDetection"
     private var _binding: FragmentWebcamBinding? = null
     private val binding get() = _binding!!
@@ -74,15 +77,28 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     // What the user sees when the webcam is not streaming. Only UI feedback: USB permission and
     // device handling stay in libausbc.
-    private enum class WebcamUiState { CHECKING, NO_DEVICE, PERMISSION_DENIED, OPEN_FAILED, ERROR, OPEN }
+    private enum class WebcamUiState { CHECKING, NO_DEVICE, PERMISSION_DENIED, OPEN_FAILED, ERROR, RECONNECTING, OPEN }
 
     private var uiState = WebcamUiState.CHECKING
     private var deniedTicks = 0
     // Permission is granted but the camera is not open: ticks in a row, and requestPermission()
     // attempts made for the current plug-in. Both reset on unplug, on open and on "Coba lagi".
     private var grantedNotOpenTicks = 0
-    private var openAttempts = 0
-    private val MAX_OPEN_ATTEMPTS = 3
+    // One connection per device (by device name): IDLE -> CONNECTING -> OPEN.
+    private enum class ConnState { IDLE, CONNECTING, OPEN }
+    private val connStates = HashMap<String, ConnState>()
+    private var currentDeviceName: String? = null
+    private var connectStartMs = 0L
+    private var openedAtMs = 0L
+    private var flowingSinceMs = 0L
+    // Consecutive failed connect attempts; reset only after frames flowed steadily for 3 s.
+    private var failures = 0
+    private var nextRetryAtMs = 0L
+    private val CONNECT_TIMEOUT_MS = 5000L
+    private val MAX_FAILURES = 5
+    private val STABLE_FLOW_MS = 3000L
+    private var viewAlive = false
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var usbLogReceiver: BroadcastReceiver? = null // TEMP-ClavoUSB
     private var lastErrorMessage: String? = null
 
@@ -106,63 +122,152 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         _binding = FragmentWebcamBinding.inflate(inflater, container, false)
         return binding.root
     }
+    // libausbc posts camera state on the main thread. State is updated here directly; it does not
+    // depend on activity?.runOnUiThread (which is skipped when the activity is momentarily null).
     override fun onCameraState(
         self: MultiCameraClient.ICamera,
         code: ICameraStateCallBack.State,
         msg: String?
     ) {
-        UsbDebugLog.d("onCameraState code=$code msg=$msg") // TEMP-ClavoUSB
-        when (code) {
-            ICameraStateCallBack.State.OPENED -> {
-                Log.d(TAG, "USB Camera Opened")
-                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Webcam", "kamera_dibuka", "Webcam") // TEMP-ClavoLat
-                isCameraOpened = true
-                openedByFrames = false
-                grantedNotOpenTicks = 0
-                openAttempts = 0
-                // Start detection only now that frames can be read from the camera.
-                activity?.runOnUiThread {
-                    deniedTicks = 0
-                    showWebcamState(WebcamUiState.OPEN)
-                    if (_binding != null && isDetectorReady) startRealTimeDetection()
-                }
+        onMain {
+            val name = self.getUsbDevice().deviceName
+            UsbDebugLog.ev("camera-state", "code=$code msg=$msg device=$name conn=${connStates[name]} sinceOpenedMs=${sinceOpenedMs()}")
+            when (code) {
+                ICameraStateCallBack.State.OPENED -> handleOpened(name)
+                ICameraStateCallBack.State.CLOSED -> handleClosed(name, null)
+                ICameraStateCallBack.State.ERROR -> handleClosed(name, msg ?: "kesalahan tidak diketahui")
             }
-            ICameraStateCallBack.State.CLOSED -> {
-                Log.d(TAG, "USB Camera Closed")
-                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
-                isCameraOpened = false
-                activity?.runOnUiThread {
-                    detectionJob?.cancel()
-                    _binding?.overlay?.clear()
-                    // The status monitor decides between "no webcam" and "no permission".
-                    showWebcamState(WebcamUiState.CHECKING)
-                }
-            }
-            ICameraStateCallBack.State.ERROR -> {
-                Log.e(TAG, "USB Camera Error: $msg")
-                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activity("Webcam", "error", "kamera: " + (msg ?: "?").take(60)) // TEMP-ClavoLat
-                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
-                isCameraOpened = false
-                activity?.runOnUiThread {
-                    detectionJob?.cancel()
-                    lastErrorMessage = msg
-                    showWebcamState(WebcamUiState.ERROR)
-                }
-            }
+        }
+    }
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
+    }
+
+    private fun sinceOpenedMs(): Long =
+        if (openedAtMs == 0L) -1L else SystemClock.elapsedRealtime() - openedAtMs
+
+    private fun devicePresent(name: String): Boolean =
+        try { getDeviceList()?.any { it.deviceName == name } ?: true } catch (e: Exception) { true }
+
+    private fun handleOpened(name: String) {
+        val now = SystemClock.elapsedRealtime()
+        // An OPENED that does not belong to the current session: view gone, device gone, gave up,
+        // or we are in the back-off wait after a CLOSED/ERROR (nothing new was started yet).
+        val stale = !viewAlive || uiState == WebcamUiState.NO_DEVICE ||
+            uiState == WebcamUiState.OPEN_FAILED || !devicePresent(name) ||
+            ((connStates[name] ?: ConnState.IDLE) == ConnState.IDLE && now < nextRetryAtMs)
+        if (stale) {
+            UsbDebugLog.ev("OPENED-ignored", "old session device=$name uiState=$uiState")
+            closeCurrentCamera()
+            return
+        }
+        UsbDebugLog.ev("connect-result", "OK device=$name afterMs=${if (connectStartMs == 0L) -1 else now - connectStartMs}")
+        connStates[name] = ConnState.OPEN
+        currentDeviceName = name
+        openedAtMs = now
+        flowingSinceMs = 0L
+        nextRetryAtMs = 0L
+        Log.d(TAG, "USB Camera Opened")
+        LatencyRecorder.activity("Webcam", "kamera_dibuka", "Webcam") // TEMP-ClavoLat
+        isCameraOpened = true
+        openedByFrames = false
+        grantedNotOpenTicks = 0
+        deniedTicks = 0
+        showWebcamState(WebcamUiState.OPEN)
+        if (_binding != null && isDetectorReady) startRealTimeDetection()
+    }
+
+    // CLOSED or ERROR. Stops the preview, closes the camera cleanly and schedules a retry.
+    private fun handleClosed(name: String, errorMsg: String?) {
+        val st = connStates[name] ?: ConnState.IDLE
+        UsbDebugLog.ev("camera-closed", "device=$name error=$errorMsg conn=$st sinceOpenedMs=${sinceOpenedMs()}")
+        LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
+        if (errorMsg != null) LatencyRecorder.activity("Webcam", "error", "kamera: " + errorMsg.take(60)) // TEMP-ClavoLat
+        isCameraOpened = false
+        openedByFrames = false
+        openedAtMs = 0L
+        flowingSinceMs = 0L
+        detectionJob?.cancel()
+        _binding?.overlay?.clear()
+        if (st == ConnState.IDLE) return // late callback of an old session, or our own close
+        connStates[name] = ConnState.IDLE
+        if (errorMsg != null) lastErrorMessage = errorMsg
+        closeCurrentCamera() // release the camera thread; the CLOSED it causes is ignored (IDLE)
+        registerFailure(errorMsg ?: "closed")
+    }
+
+    private fun backoffMs(f: Int): Long = minOf(1000L shl (f - 1), 4000L) // 1, 2, 4, 4, 4 s
+
+    private fun registerFailure(reason: String) {
+        failures++
+        if (failures >= MAX_FAILURES) {
+            UsbDebugLog.ev("connect-gave-up", "failures=$failures reason=$reason")
+            showWebcamState(WebcamUiState.OPEN_FAILED)
+            return
+        }
+        val wait = backoffMs(failures)
+        nextRetryAtMs = SystemClock.elapsedRealtime() + wait
+        UsbDebugLog.ev("connect-retry", "failures=$failures/$MAX_FAILURES reason=$reason waitMs=$wait")
+        showWebcamState(WebcamUiState.RECONNECTING)
+    }
+
+    private fun startConnect(device: android.hardware.usb.UsbDevice) {
+        val name = device.deviceName
+        connStates[name] = ConnState.CONNECTING
+        currentDeviceName = name
+        connectStartMs = SystemClock.elapsedRealtime()
+        UsbDebugLog.ev("connect-start", "attempt=${failures + 1}/$MAX_FAILURES device=$name")
+        showWebcamState(if (failures > 0) WebcamUiState.RECONNECTING else WebcamUiState.CHECKING)
+        if (!connectDevice(device)) {
+            connStates[name] = ConnState.IDLE
+            UsbDebugLog.ev("connect-result", "FAILED connectDevice=false device=$name")
+            registerFailure("connectDevice=false")
+        }
+    }
+
+    private fun onUsbAttachDetach(attached: Boolean, device: android.hardware.usb.UsbDevice?) {
+        if (!viewAlive) return
+        if (attached) {
+            failures = 0
+            nextRetryAtMs = 0L
+            noDeviceTicks = 0
+            deniedTicks = 0
+            grantedNotOpenTicks = 0
+            connStates.clear()
+            showWebcamState(WebcamUiState.CHECKING) // the status tick (and libausbc) open it, no tab switch needed
+        } else {
+            UsbDebugLog.ev("detached-info", "sinceOpenedMs=${sinceOpenedMs()}")
+            isCameraOpened = false
+            openedByFrames = false
+            openedAtMs = 0L
+            flowingSinceMs = 0L
+            detectionJob?.cancel()
+            _binding?.overlay?.clear()
+            connStates.clear()
+            failures = 0
+            nextRetryAtMs = 0L
+            noDeviceTicks = 2
+            showWebcamState(WebcamUiState.NO_DEVICE)
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         UsbDebugLog.d("WebcamFragment.onViewCreated") // TEMP-ClavoUSB
-        usbLogReceiver = UsbDebugLog.registerAttachDetachReceiver(requireContext().applicationContext) // TEMP-ClavoUSB
+        viewAlive = true
+        usbLogReceiver = UsbDebugLog.registerAttachDetachReceiver(requireContext().applicationContext) { attached, dev -> onUsbAttachDetach(attached, dev) } // TEMP-ClavoUSB
 
         overlay = binding.overlay
         webcamRotation = DetectionPrefs.getWebcamRotation(requireContext())
 
         // Setup MediaPipe Object Detector
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
-            loadModelAndStartDetection()
+            // Debounce quick tab switching, and only build the detector while visible. The
+            // detector itself is created on the shared DetectorQueue, i.e. after the Camera
+            // tab's detector has been closed.
+            delay(300)
+            viewLifecycleOwner.lifecycle.whenStarted { loadModelAndStartDetection() }
         }
 
         initBottomSheetControls()
@@ -190,6 +295,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
 
     private fun evaluateWebcamStatus() {
         if (_binding == null) return
+        val now = SystemClock.elapsedRealtime()
 
         // 1) Frames that really arrive win over everything else: the texture timestamp changed
         //    since the previous tick.
@@ -198,6 +304,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         lastSurfaceTs = ts
         if (framesFlowing) {
             staleTicks = 0
+            if (flowingSinceMs == 0L) flowingSinceMs = now
             if (!isCameraOpened) {
                 // onCameraState(OPENED) was missed, but the preview is alive: treat it as open.
                 isCameraOpened = true
@@ -205,19 +312,31 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                 Log.d(TAG, "Frames arriving without OPENED callback: treating webcam as open")
                 if (isDetectorReady) startRealTimeDetection()
             }
-        } else if (openedByFrames && ++staleTicks >= 2) {
-            // We only believed "open" because of frames, and they stopped.
-            openedByFrames = false
-            isCameraOpened = false
-            detectionJob?.cancel()
-            _binding?.overlay?.clear()
+        } else {
+            flowingSinceMs = 0L
+            if (openedByFrames && ++staleTicks >= 2) {
+                // We only believed "open" because of frames, and they stopped: this is a failure,
+                // and the UI must leave OPEN.
+                openedByFrames = false
+                isCameraOpened = false
+                detectionJob?.cancel()
+                _binding?.overlay?.clear()
+                currentDeviceName?.let { connStates[it] = ConnState.IDLE }
+                closeCurrentCamera()
+                registerFailure("frames stopped")
+                return
+            }
         }
 
         if (isCameraOpened || framesFlowing) {
             deniedTicks = 0
             grantedNotOpenTicks = 0
-            openAttempts = 0
             noDeviceTicks = 0
+            // The failure budget is only refilled by frames that flowed steadily for 3 s.
+            if (failures != 0 && flowingSinceMs != 0L && now - flowingSinceMs >= STABLE_FLOW_MS) {
+                UsbDebugLog.ev("stable-flow", "frames flowing >= ${STABLE_FLOW_MS}ms: failures $failures -> 0")
+                failures = 0
+            }
             UsbDebugLog.d("tick: camera open framesFlowing=$framesFlowing uiState=$uiState") // TEMP-ClavoUSB
             showWebcamState(WebcamUiState.OPEN)
             return
@@ -228,12 +347,14 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             UsbDebugLog.d("tick: getDeviceList()=null (libausbc not ready) uiState=$uiState") // TEMP-ClavoUSB
             return
         }
-        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "dev", if (devices.isEmpty()) "0" else "1", if (devices.isEmpty()) "webcam_dicabut" else "webcam_terdeteksi", skipInitial = devices.isEmpty()) // TEMP-ClavoLat
+        LatencyRecorder.activityOnChange("Webcam", "dev", if (devices.isEmpty()) "0" else "1", if (devices.isEmpty()) "webcam_dicabut" else "webcam_terdeteksi", skipInitial = devices.isEmpty()) // TEMP-ClavoLat
         if (devices.isEmpty()) {
             UsbDebugLog.d("tick: devices=0 opened=false uiState=$uiState deniedTicks=$deniedTicks") // TEMP-ClavoUSB
             deniedTicks = 0
             grantedNotOpenTicks = 0
-            openAttempts = 0 // unplugged: the next plug-in starts with a fresh budget
+            connStates.clear()
+            failures = 0 // unplugged: the next plug-in starts with a fresh budget
+            nextRetryAtMs = 0L
             // "No webcam" only after two consecutive ticks without device and without frames.
             noDeviceTicks++
             showWebcamState(if (noDeviceTicks >= 2) WebcamUiState.NO_DEVICE else WebcamUiState.CHECKING)
@@ -244,33 +365,43 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         val ctx = context ?: return
         val usbManager = ctx.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
         val granted = devices.firstOrNull { usbManager.hasPermission(it) }
-        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "perm", if (granted != null) "diberikan" else "belum_ada", "izin_usb", if (granted != null) "diberikan" else "belum_ada", skipInitial = granted == null) // TEMP-ClavoLat
+        LatencyRecorder.activityOnChange("Webcam", "perm", if (granted != null) "diberikan" else "belum_ada", "izin_usb", if (granted != null) "diberikan" else "belum_ada", skipInitial = granted == null) // TEMP-ClavoLat
         UsbDebugLog.d( // TEMP-ClavoUSB
             "tick: devices=${devices.size} hasPermission=${granted != null} opened=false " +
                 "uiState=$uiState deniedTicks=$deniedTicks grantedNotOpenTicks=$grantedNotOpenTicks " +
-                "openAttempts=$openAttempts"
+                "failures=$failures conn=${granted?.let { connStates[it.deviceName] }}"
         )
-        if (uiState == WebcamUiState.ERROR) return // keep the error until the user retries
 
         if (granted != null) {
             deniedTicks = 0
             if (uiState == WebcamUiState.OPEN_FAILED) return // keep until the user taps "Coba lagi"
-            grantedNotOpenTicks++
-            if (grantedNotOpenTicks < 2) {
-                showWebcamState(WebcamUiState.CHECKING) // permission granted, camera is opening
-                return
+            val name = granted.deviceName
+            currentDeviceName = name
+            when (connStates[name] ?: ConnState.IDLE) {
+                ConnState.CONNECTING -> {
+                    if (now - connectStartMs > CONNECT_TIMEOUT_MS) {
+                        UsbDebugLog.ev("connect-result", "TIMEOUT after ${now - connectStartMs}ms device=$name")
+                        connStates[name] = ConnState.IDLE
+                        closeCurrentCamera()
+                        registerFailure("timeout")
+                    }
+                    // else: a connect is in flight; never start a second one
+                }
+                ConnState.OPEN -> Unit // the OPENED callback is the authority; frames follow
+                ConnState.IDLE -> {
+                    if (now < nextRetryAtMs) {
+                        showWebcamState(WebcamUiState.RECONNECTING)
+                        return
+                    }
+                    // Fresh plug-in: libausbc connects by itself first; give it two ticks.
+                    if (failures == 0 && ++grantedNotOpenTicks < 3) {
+                        showWebcamState(WebcamUiState.CHECKING)
+                        return
+                    }
+                    grantedNotOpenTicks = 0
+                    startConnect(granted) // permission is held: connect directly, no requestPermission
+                }
             }
-            if (openAttempts >= MAX_OPEN_ATTEMPTS) {
-                showWebcamState(WebcamUiState.OPEN_FAILED)
-                return
-            }
-            // Permission is held but libausbc never opened the camera (its grant broadcast was
-            // missed): call requestPermission() so it goes through processConnect directly.
-            openAttempts++
-            grantedNotOpenTicks = 0
-            UsbDebugLog.d("requestPermission (auto) attempt=$openAttempts/$MAX_OPEN_ATTEMPTS ${UsbDebugLog.describe(usbManager, granted)}") // TEMP-ClavoUSB
-            showWebcamState(WebcamUiState.CHECKING)
-            requestPermission(granted)
             return
         }
         // A webcam is plugged in, there is no USB permission and we are resumed (so the system
@@ -284,15 +415,23 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     private fun retryWebcam() {
         deniedTicks = 0
         grantedNotOpenTicks = 0
-        openAttempts = 0
+        failures = 0
+        nextRetryAtMs = 0L
         val device = try { getDeviceList()?.firstOrNull() } catch (e: Exception) { null }
         if (device == null) {
             showWebcamState(WebcamUiState.NO_DEVICE)
             return
         }
+        closeCurrentCamera()
+        connStates[device.deviceName] = ConnState.IDLE
         showWebcamState(WebcamUiState.CHECKING)
-        UsbDebugLog.d("requestPermission (retry button) VID=${device.vendorId} PID=${device.productId}") // TEMP-ClavoUSB
-        requestPermission(device) // libausbc: shows the system dialog or reopens the camera
+        val usbManager = context?.getSystemService(Context.USB_SERVICE) as? UsbManager
+        if (usbManager?.hasPermission(device) == true) {
+            startConnect(device) // permission already held: no requestPermission
+        } else {
+            UsbDebugLog.d("requestPermission (retry button) VID=${device.vendorId} PID=${device.productId}") // TEMP-ClavoUSB
+            requestPermission(device) // no permission yet: shows the system dialog
+        }
     }
 
     private fun showWebcamState(state: WebcamUiState) {
@@ -306,7 +445,11 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
                 "Izin USB untuk webcam ditolak, jadi webcam tidak bisa dibuka. " +
                     "Tekan \"Coba lagi\" lalu pilih Izinkan."
             WebcamUiState.OPEN_FAILED ->
-                "Webcam terdeteksi tetapi gagal dibuka. Tekan \"Coba lagi\"."
+                "Webcam gagal tersambung setelah $MAX_FAILURES percobaan" +
+                    (lastErrorMessage?.let { " ($it)" } ?: "") +
+                    ". Periksa kabel/adaptor OTG lalu tekan \"Coba lagi\"."
+            WebcamUiState.RECONNECTING ->
+                "Menyambung ulang... (percobaan ${failures + 1} dari $MAX_FAILURES)"
             WebcamUiState.ERROR ->
                 "Webcam bermasalah: ${lastErrorMessage ?: "kesalahan tidak diketahui"}. " +
                     "Periksa kabel/adaptor OTG lalu tekan \"Coba lagi\"."
@@ -336,7 +479,7 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
             com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setModel("Webcam", initial.displayName) // TEMP-ClavoLat
 
             detectionJob?.cancel()
-            if (isDetectorReady) objectDetectorHelper.release()
+            if (isDetectorReady) objectDetectorHelper.release() // queued close; the new create queues behind it
 
             objectDetectorHelper = withContext(Dispatchers.IO) {
                 ObjectDetectorHelper(
@@ -527,38 +670,31 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
         detectionJob?.cancel()
         viewLifecycleOwner.lifecycleScope.launch {
             withContext(Dispatchers.IO + NonCancellable) {
-                objectDetectorHelper.threshold = value
-                objectDetectorHelper.clearObjectDetector()
-                objectDetectorHelper.setupObjectDetector()
+                objectDetectorHelper.updateThreshold(value) // one queued step on the shared queue
             }
             _binding?.overlay?.clear()
             startRealTimeDetection()
         }
     }
 
+    // Rotation state is read in onViewCreated; the "Putar" button lives in the header
+    // (MainActivity) and calls rotateNext().
     private fun initRotationControl(sheet: InfoBottomSheetBinding) {
-        val options = listOf(0, 90, 180, 270)
-        sheet.rotationRow.visibility = View.VISIBLE // hidden by default; only the Webcam screen shows it
-        sheet.spinnerRotation.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_dropdown_item, options.map { "$it°" }
-        )
-        sheet.spinnerRotation.setSelection(options.indexOf(webcamRotation).coerceAtLeast(0), false)
         Log.i("ClavoDet", "[Webcam] manual rotation=$webcamRotation") // TEMP-ClavoDet
         com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setRotation("Webcam", webcamRotation) // TEMP-ClavoLat
-        sheet.spinnerRotation.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val rot = options[position]
-                if (rot == webcamRotation) return
-                webcamRotation = rot
-                DetectionPrefs.setWebcamRotation(requireContext().applicationContext, rot)
-                Log.i("ClavoDet", "[Webcam] manual rotation=$rot") // TEMP-ClavoDet
-                com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setRotation("Webcam", rot) // TEMP-ClavoLat
-                applyRotationTransform()
-                _binding?.overlay?.clear()
-            }
+    }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
+    // Called by the header button: 0 -> 90 -> 180 -> 270 -> 0. Saved per mode.
+    override fun rotateNext(): Int {
+        val ctx = context?.applicationContext ?: return webcamRotation
+        val rot = FrameMapping.nextRotation(webcamRotation)
+        webcamRotation = rot
+        DetectionPrefs.setWebcamRotation(ctx, rot)
+        Log.i("ClavoDet", "[Webcam] manual rotation=$rot") // TEMP-ClavoDet
+        com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.setRotation("Webcam", rot) // TEMP-ClavoLat
+        applyRotationTransform()
+        _binding?.overlay?.clear()
+        return rot
     }
 
     // ==================== Detector Listener ====================
@@ -610,6 +746,9 @@ class WebcamFragment : CameraFragment(), ObjectDetectorHelper.DetectorListener {
     override fun onDestroyView() {
         UsbDebugLog.d("WebcamFragment.onDestroyView") // TEMP-ClavoUSB
         com.google.mediapipe.examples.objectdetection.utils.LatencyRecorder.activityOnChange("Webcam", "det", "off", "deteksi_berhenti") // TEMP-ClavoLat
+        viewAlive = false
+        mainHandler.removeCallbacksAndMessages(null)
+        connStates.clear()
         usbLogReceiver?.let { // TEMP-ClavoUSB
             try { context?.applicationContext?.unregisterReceiver(it) } catch (e: Exception) { }
             usbLogReceiver = null

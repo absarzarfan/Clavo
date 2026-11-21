@@ -21,6 +21,7 @@
  *  may have a different license, see the respective files.
  */
 
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix.
 package com.jiangdg.usb;
 
 import android.annotation.SuppressLint;
@@ -589,6 +590,18 @@ public final class USBMonitor {
 			mAsyncHandler.postDelayed(this, 2000);	// confirm every 2 seconds
 		}
 	};
+
+	/**
+	 * Modified 2026-11-21 by Absar Rakha Zarfan: connect a device that already has permission
+	 * without going through requestPermission.
+	 * @return true if the connect was started
+	 */
+	public boolean connectGranted(final UsbDevice device) {
+		if (destroyed || device == null || !isRegistered()) return false;
+		if (!mUsbManager.hasPermission(device)) return false;
+		processConnect(device);
+		return true;
+	}
 
 	/**
 	 * open specific USB device

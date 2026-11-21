@@ -72,18 +72,6 @@
                     android:minWidth="@dimen/bottom_sheet_spinner_model_min_width"
                     android:spinnerMode="dropdown"
                     android:theme="@style/BottomSheetSpinnerItemStyle" />
-
-                <!-- Camera mode only (hidden by default; CameraFragment shows it).
-                     Each tap cycles 0 -> 90 -> 180 -> 270 -> 0 -->
-                <Button
-                    android:id="@+id/btn_rotate"
-                    style="@style/RotateButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:contentDescription="Putar 0 derajat"
-                    android:text="Putar 0°"
-                    android:visibility="gone" />
             </LinearLayout>
 
             <TextView
@@ -121,33 +109,6 @@
                 android:layout_marginTop="4dp"
                 android:max="85"
                 android:progress="45" />
-        </LinearLayout>
-
-        <!-- Manual rotation (Webcam only; hidden unless WebcamFragment shows it) -->
-        <LinearLayout
-            android:id="@+id/rotation_row"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/bottom_sheet_default_row_margin"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:visibility="gone">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Rotasi webcam"
-                android:textColor="@color/bottom_sheet_text_color"
-                android:textSize="@dimen/bottom_sheet_text_size" />
-
-            <androidx.appcompat.widget.AppCompatSpinner
-                android:id="@+id/spinner_rotation"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:minWidth="@dimen/bottom_sheet_spinner_model_min_width"
-                android:spinnerMode="dropdown"
-                android:theme="@style/BottomSheetSpinnerItemStyle" />
         </LinearLayout>
 
     </androidx.appcompat.widget.LinearLayoutCompat>

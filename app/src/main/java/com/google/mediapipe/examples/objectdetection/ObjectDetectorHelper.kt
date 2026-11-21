@@ -48,12 +48,16 @@ class ObjectDetectorHelper(
     var objectDetectorListener: DetectorListener? = null,
 ) {
 
-    // For this example this needs to be a var so it can be reset on changes. If the ObjectDetector
-    // will not change, a lazy val would be preferable.
+    // Only touched on the shared DetectorQueue thread (create/close/detect); read elsewhere only
+    // for null checks.
     @Volatile
     private var objectDetector: ObjectDetector? = null
+    @Volatile
     private var imageRotation = 0
-    private lateinit var imageProcessingOptions: ImageProcessingOptions
+    @Volatile
+    private var rotationInitialized = false
+    @Volatile
+    private var imageProcessingOptions: ImageProcessingOptions? = null
 
     // Manual clockwise rotation (0/90/180/270) applied to camera frames before the detector sees
     // them (Camera mode). Default 0 = unchanged behaviour. Each frame remembers the value it was
@@ -62,42 +66,83 @@ class ObjectDetectorHelper(
     var manualRotation = 0
     private val manualRotationByFrame = java.util.concurrent.ConcurrentHashMap<Long, Int>()
 
-    // Guards every access to objectDetector so close() can never run while a frame is being
-    // submitted to the native graph (that race caused SIGSEGV in nativeCreateProto).
-    private val detectorLock = Any()
-
-    // Once released, the helper never creates or uses a detector again.
+    // closing: release() was called, so new frames are refused and late results are ignored.
+    // closed: the native detector has really been closed on the queue.
     @Volatile
-    private var released = false
+    private var closing = false
+    @Volatile
+    private var closed = false
+
+    // Frames handed to the native graph and not yet answered (log only; frames the graph drops
+    // silently are never answered, so it is reset whenever a detector is created).
+    private val inFlight = java.util.concurrent.atomic.AtomicInteger(0)
+
+    // At most one detectAsync is waiting on the queue; extra frames are dropped.
+    private val detectPending = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private val id = System.identityHashCode(this).toString(16)
+
+    private fun dlog(msg: String) { // TEMP-ClavoDet
+        Log.i("ClavoDet", "[helper $id] $msg inFlight=${inFlight.get()} thread=${Thread.currentThread().name}") // TEMP-ClavoDet
+    } // TEMP-ClavoDet
+
+    // Runs [task] on the shared queue and waits (inline when already on it).
+    private fun <T> onQueue(task: () -> T): T =
+        if (DetectorQueue.isQueueThread()) task() else DetectorQueue.call(task)
 
     init {
         setupObjectDetector()
     }
 
+    // Closes the detector (blocking until done). Safe from any worker thread; do not call on Main.
     fun clearObjectDetector() {
-        synchronized(detectorLock) {
-            objectDetector?.close()
-            objectDetector = null
-        }
+        onQueue { doClear() }
     }
 
-    // Permanently shuts the helper down. Call after the frame producer has been stopped.
+    // Same, but only enqueues the close on the shared queue (safe on Main).
+    fun clearObjectDetectorAsync() {
+        DetectorQueue.execute { doClear() }
+    }
+
+    // Permanently shuts the helper down. Call after the frame producer has been stopped. Returns
+    // at once; the close is queued behind any create/detect already queued.
     fun release() {
-        synchronized(detectorLock) {
-            released = true
-            objectDetector?.close()
-            objectDetector = null
-        }
+        closing = true
         objectDetectorListener = null
+        DetectorQueue.execute {
+            doClear()
+            closed = true
+        }
     }
 
-    // Initialize the object detector using current settings on the
-    // thread that is using it. CPU can be used with detectors
-    // that are created on the main thread and used on a background thread, but
-    // the GPU delegate needs to be used on the thread that initialized the detector
+    private fun doClear() {
+        val d = objectDetector ?: return
+        dlog("close-start")
+        objectDetector = null
+        try {
+            d.close()
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "close failed: " + e.message)
+        }
+        dlog("close-done")
+    }
 
+    // Initialize the object detector using current settings, on the shared queue.
     fun setupObjectDetector() {
-        if (released) return
+        onQueue { doSetup() }
+    }
+
+    // Changes the threshold and rebuilds the detector as one queued step.
+    fun updateThreshold(value: Float) {
+        onQueue {
+            threshold = value
+            doClear()
+            doSetup()
+        }
+    }
+
+    private fun doSetup() {
+        if (closing || closed) return
         // Set general detection options, including number of used threads
         if (modelPath.isEmpty()) {
             objectDetectorListener?.onError("Model path is empty.")
@@ -156,14 +201,16 @@ class ObjectDetectorHelper(
             }
 
             val options = optionsBuilder.build()
+            dlog("create-start model=$modelPath")
             val newDetector = ObjectDetector.createFromOptions(context, options)
-            synchronized(detectorLock) {
-                if (released) {
-                    newDetector.close()
-                } else {
-                    objectDetector?.close()
-                    objectDetector = newDetector
-                }
+            if (closing || closed) {
+                newDetector.close()
+                dlog("create-done but released meanwhile: closed again")
+            } else {
+                doClear()
+                objectDetector = newDetector
+                inFlight.set(0)
+                dlog("create-done")
             }
         } catch (e: IllegalStateException) {
             objectDetectorListener?.onError(
@@ -183,9 +230,11 @@ class ObjectDetectorHelper(
     }
 
     fun changeModel(newModelPath: String) {
-        modelPath = newModelPath
-        clearObjectDetector()
-        setupObjectDetector()
+        onQueue {
+            modelPath = newModelPath
+            doClear()
+            doSetup()
+        }
     }
 
     // Return running status of recognizer helper
@@ -291,8 +340,9 @@ class ObjectDetectorHelper(
         }
 
         LatencyRecorder.frameReceived("Camera") // TEMP-ClavoLat
-        // Drop the frame if the detector is closed/released (e.g. while the fragment is stopping)
-        if (released || objectDetector == null) {
+        // Drop the frame if the detector is closing/closed (e.g. while the fragment is stopping),
+        // before any bitmap is copied.
+        if (closing || closed || objectDetector == null) {
             imageProxy.close()
             return
         }
@@ -308,12 +358,14 @@ class ObjectDetectorHelper(
         )
         imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(it.planes[0].buffer) }
 
-        // If the input image rotation is change, stop all detector
-        if (frameRotation != imageRotation) {
+        // The rotation lives in the per-frame ImageProcessingOptions, so a new value only needs
+        // new options, not a new detector. The first frame takes its rotation here, so the
+        // detector is not rebuilt on the first frame.
+        if (!rotationInitialized || frameRotation != imageRotation) {
             imageRotation = frameRotation
-            clearObjectDetector()
-            setupObjectDetector()
-            return
+            rotationInitialized = true
+            imageProcessingOptions = ImageProcessingOptions.builder()
+                .setRotationDegrees(frameRotation).build()
         }
 
         // Manual rotation: the detector sees the same rotated picture as the preview.
@@ -342,8 +394,10 @@ class ObjectDetectorHelper(
         val normalizedBitmap = normalizeBitmap(bitmap, inputSize)
 
         // Update rotasi
-        if (rotationDegrees != imageRotation) {
+        if (closing || closed) return
+        if (!rotationInitialized || rotationDegrees != imageRotation) {
             imageRotation = rotationDegrees
+            rotationInitialized = true
             imageProcessingOptions = ImageProcessingOptions.builder()
                 .setRotationDegrees(imageRotation)
                 .build()
@@ -364,16 +418,25 @@ class ObjectDetectorHelper(
     fun detectAsync(mpImage: MPImage, frameTime: Long) {
         // As we're using running mode LIVE_STREAM, the detection result will be returned in
         // returnLivestreamResult function
-        // Hold the lock so close() cannot run while the frame is handed to the native graph.
-        synchronized(detectorLock) {
-            if (released) return
-            val detector = objectDetector ?: return
-            if (!::imageProcessingOptions.isInitialized) return
+        // The frame is handed to the native graph on the shared queue, the same thread that creates
+        // and closes detectors, so a close always runs after the submission queued before it.
+        if (closing || closed) return
+        if (!detectPending.compareAndSet(false, true)) return // one waiting frame is enough
+        DetectorQueue.execute {
             try {
-                LatencyRecorder.inferStart(frameTime) // TEMP-ClavoLat
-                detector.detectAsync(mpImage, imageProcessingOptions, frameTime)
-            } catch (e: RuntimeException) {
-                Log.e(TAG, "detectAsync failed: " + e.message)
+                if (closing || closed) return@execute
+                val detector = objectDetector ?: return@execute
+                val options = imageProcessingOptions ?: return@execute
+                inFlight.incrementAndGet()
+                try {
+                    LatencyRecorder.inferStart(frameTime) // TEMP-ClavoLat
+                    detector.detectAsync(mpImage, options, frameTime)
+                } catch (e: RuntimeException) {
+                    inFlight.updateAndGet { if (it > 0) it - 1 else 0 }
+                    Log.e(TAG, "detectAsync failed: " + e.message)
+                }
+            } finally {
+                detectPending.set(false)
             }
         }
     }
@@ -382,6 +445,11 @@ class ObjectDetectorHelper(
     private fun returnLivestreamResult(
         result: ObjectDetectorResult, input: MPImage
     ) {
+        inFlight.updateAndGet { if (it > 0) it - 1 else 0 }
+        if (closing || closed) {
+            manualRotationByFrame.remove(result.timestampMs())
+            return
+        }
         LatencyRecorder.inferEnd(result.timestampMs()) // TEMP-ClavoLat
         val finishTimeMs = SystemClock.uptimeMillis()
         val inferenceTime = finishTimeMs - result.timestampMs()
@@ -400,6 +468,8 @@ class ObjectDetectorHelper(
 
     // Return errors thrown during detection to this ObjectDetectorHelper's caller
     private fun returnLivestreamError(error: RuntimeException) {
+        inFlight.updateAndGet { if (it > 0) it - 1 else 0 }
+        if (closing || closed) return
         objectDetectorListener?.onError(
             error.message ?: "An unknown error has occurred"
         )
@@ -470,4 +540,38 @@ class ObjectDetectorHelper(
         fun onResults(resultBundle: ResultBundle)
     }
 
+}
+
+/**
+ * One process-wide single thread for every detector create / detectAsync / close. Because Camera
+ * and Webcam share it, a detector of one tab is always fully closed before the next tab's detector
+ * is created, and a close runs after any submission queued before it.
+ */
+object DetectorQueue {
+    @Volatile
+    private var queueThread: Thread? = null
+
+    private val executor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "clavo-det-queue").also { queueThread = it }
+    }
+
+    fun isQueueThread(): Boolean = Thread.currentThread() === queueThread
+
+    fun execute(task: () -> Unit) {
+        executor.execute {
+            try {
+                task()
+            } catch (t: Throwable) {
+                Log.e("ClavoDet", "queue task failed: $t")
+            }
+        }
+    }
+
+    fun <T> call(task: () -> T): T {
+        try {
+            return executor.submit(java.util.concurrent.Callable { task() }).get()
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw e.cause ?: e
+        }
+    }
 }

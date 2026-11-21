@@ -1,3 +1,4 @@
+// Modified 2026-11-21 by Absar Rakha Zarfan (Apache-2.0): single-connect guard, HandlerThread leak fix.
 package com.jiangdg.ausbc
 
 import android.content.Context
@@ -200,6 +201,20 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
     fun hasPermission(device: UsbDevice?) = mUsbMonitor?.hasPermission(device)
 
     /**
+     * Connect a device that already has permission, without asking for permission again.
+     * (Modified 2026-11-21 by Absar Rakha Zarfan)
+     *
+     * @return true if the connect was started
+     */
+    fun connectDevice(device: UsbDevice?): Boolean {
+        if (!isMonitorRegistered()) {
+            Logger.w(TAG, "Usb monitor haven't been registered.")
+            return false
+        }
+        return mUsbMonitor?.connectGranted(device) == true
+    }
+
+    /**
      * Get device list
      *
      * @param list filter regular
@@ -266,6 +281,10 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
         private var mCameraStateCallback: ICameraStateCallBack? = null
         private var mSizeChangedFuture: SettableFuture<Pair<Int, Int>>? = null
         protected var mContext = ctx
+        // Modified 2026-11-21 by Absar Rakha Zarfan: one open per camera.
+        // 0 = idle, 1 = opening, 2 = opened. An "opening" older than OPEN_STALE_MS counts as idle.
+        @Volatile private var mOpenState = 0
+        @Volatile private var mOpenStartMs = 0L
         protected var mCameraRequest: CameraRequest? = null
         protected var mCameraHandler: Handler? = null
         protected var isPreviewed: Boolean = false
@@ -632,6 +651,10 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
          * @param msg detail msg
          */
         protected fun postStateEvent(state: ICameraStateCallBack.State, msg: String? = null) {
+            when (state) {
+                ICameraStateCallBack.State.OPENED -> mOpenState = 2
+                ICameraStateCallBack.State.ERROR, ICameraStateCallBack.State.CLOSED -> mOpenState = 0
+            }
             mMainHandler.post {
                 mCameraStateCallback?.onCameraState(this, state, msg)
             }
@@ -677,8 +700,29 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
          * @param cameraRequest camera request
          */
         fun <T> openCamera(cameraView: T? = null, cameraRequest: CameraRequest? = null) {
+            // Modified 2026-11-21 by Absar Rakha Zarfan: a second open of the same camera (for
+            // example a duplicate connect callback) must not start a second UVC session.
+            synchronized(this) {
+                val now = SystemClock.elapsedRealtime()
+                if (mOpenState == 2 ||
+                    (mOpenState == 1 && now - mOpenStartMs < OPEN_STALE_MS)
+                ) {
+                    Logger.w(TAG, "openCamera ignored: already ${if (mOpenState == 2) "opened" else "opening"}")
+                    return
+                }
+                mOpenState = 1
+                mOpenStartMs = now
+            }
             mCameraView = cameraView ?: mCameraView
             mCameraRequest = cameraRequest ?: getDefaultCameraRequest()
+            // Modified 2026-11-21 by Absar Rakha Zarfan: stop a previous camera thread instead of
+            // overwriting (and leaking) it.
+            mCameraThread?.let { old ->
+                mCameraHandler?.obtainMessage(MSG_STOP_PREVIEW)?.sendToTarget()
+                old.quitSafely()
+                mCameraThread = null
+                mCameraHandler = null
+            }
             HandlerThread("camera-${System.currentTimeMillis()}").apply {
                 start()
             }.let { thread ->
@@ -694,6 +738,7 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
          * Close camera
          */
         fun closeCamera() {
+            mOpenState = 0 // Modified 2026-11-21 by Absar Rakha Zarfan
             mCameraHandler?.obtainMessage(MSG_STOP_PREVIEW)?.sendToTarget()
             mCameraThread?.quitSafely()
             mCameraThread = null
@@ -996,6 +1041,7 @@ class MultiCameraClient(ctx: Context, callback: IDeviceConnectCallBack?) {
     companion object {
         private const val TAG = "MultiCameraClient"
         private const val MSG_START_PREVIEW = 0x01
+        private const val OPEN_STALE_MS = 8000L // Modified 2026-11-21 by Absar Rakha Zarfan
         private const val MSG_STOP_PREVIEW = 0x02
         private const val MSG_CAPTURE_IMAGE = 0x03
         private const val MSG_CAPTURE_VIDEO_START = 0x04

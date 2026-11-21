@@ -19,6 +19,14 @@ object UsbDebugLog {
         Log.d(TAG, msg)
     }
 
+    private val stamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+
+    /** Event line with wall-clock timestamp: "EVENT @HH:mm:ss.SSS detail". */
+    @Synchronized
+    fun ev(event: String, detail: String = "") {
+        Log.i(TAG, "$event @${stamp.format(java.util.Date())} $detail".trim())
+    }
+
     fun describe(usb: UsbManager?, dev: UsbDevice): String {
         val ifaceClasses = (0 until dev.interfaceCount).joinToString(",") { dev.getInterface(it).interfaceClass.toString() }
         val perm = try { usb?.hasPermission(dev) } catch (e: Exception) { null }
@@ -37,13 +45,19 @@ object UsbDebugLog {
     }
 
     /** Own receiver for ATTACHED/DETACHED, registered not-exported. Caller must unregister it. */
-    fun registerAttachDetachReceiver(ctx: Context): BroadcastReceiver {
+    fun registerAttachDetachReceiver(
+        ctx: Context,
+        onEvent: ((attached: Boolean, device: UsbDevice?) -> Unit)? = null
+    ): BroadcastReceiver {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
                 @Suppress("DEPRECATION")
                 val dev = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
                 val usb = c.getSystemService(Context.USB_SERVICE) as? UsbManager
                 d("RECEIVER ${intent.action} device=${dev?.let { describe(usb, it) }}")
+                val attached = intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED
+                ev(if (attached) "ATTACHED" else "DETACHED", "device=${dev?.deviceName}")
+                onEvent?.invoke(attached, dev)
             }
         }
         val filter = IntentFilter().apply {
