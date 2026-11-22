@@ -68,7 +68,7 @@ Catatan penting:
   tidak menggagalkan tes. Kolom `thread` selalu `default` (jumlah thread MediaPipe tidak dapat diatur).
 - `bandingkan_cengkeh.ps1` hanya bermakna bila kedua berkas berasal dari gambar yang sama.
 - `CengkehRegressionTest` (lama) memakai foto pasta, tidak bermakna, jangan dipakai sebagai bukti.
-  Jangan menjalankannya dengan `-e class` yang sama; cukup dua tes di atas.
+  Dengan `-e class` hanya dua tes di atas yang dijalankan, jadi tes lama itu tidak ikut.
 
 ## Mengapa tidak memakai `connectedDebugAndroidTest`
 
