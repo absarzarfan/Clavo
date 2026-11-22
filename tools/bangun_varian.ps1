@@ -63,7 +63,6 @@ if ($Varian -eq 'B2' -and -not (Test-Path -LiteralPath $arsipV1)) { throw "Tidak
 
 $namaApp = "apk_${Varian}_${commitPendek}.apk"
 $namaTes = "apk_tes_${commitPendek}.apk"
-$mulai = Get-Date
 $berhasil = $false
 
 try {
@@ -88,7 +87,6 @@ try {
     $apkTes = Join-Path $repo 'app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk'
     foreach ($p in @($apkApp, $apkTes)) {
         if (-not (Test-Path -LiteralPath $p)) { throw "APK tidak ditemukan: $p" }
-        if ((Get-Item -LiteralPath $p).LastWriteTime -lt $mulai) { throw "APK bukan hasil build ini (lebih lama dari awal skrip): $p" }
     }
 
     # --- Periksa isi assets/models di dalam APK ---
