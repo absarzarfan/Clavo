@@ -30,11 +30,13 @@ $FILES = "/sdcard/Android/data/$PKG/files"
 
 # 1. Bangun (assets/models diatur sementara lalu dipulihkan otomatis)
 .\tools\bangun_varian.ps1 -Varian $V
-#    hasil: C:\dev\apk\apk_<varian>_<commit>.apk dan apk_tes_<commit>.apk; dicatat di apk_commit.txt
+#    hasil: C:\dev\apk\apk_<varian>_v<versi>_<commit>.apk (mis. apk_B1_v1.3.0-ta_<commit>.apk) dan apk_tes_<commit>.apk;
+#    dicatat di apk_commit.txt; salinan APK aplikasi juga di C:\devpkrsip\ + baris di arsip\VERSI.md
 $C = (git rev-parse --short HEAD)
+$VER = '1.3.0-ta'   # skema versi di app/build.gradle (clavoVersionScheme)
 
 # 2. Pasang APK aplikasi, lalu APK tes (-t wajib untuk APK tes)
-adb install -r "C:\dev\apk\apk_${V}_$C.apk"
+adb install -r "C:\dev\apk\apk_${V}_v${VER}_$C.apk"
 adb install -r -t "C:\dev\apk\apk_tes_$C.apk"
 
 # 3. Dorong gambar uji ke folder aplikasi (folder dibuat dulu; isi lama dihapus agar tidak bercampur)

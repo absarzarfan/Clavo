@@ -10,6 +10,10 @@
   assembleDebugAndroidTest -> periksa isi assets/models di dalam APK -> salin ke C:\dev\apk ->
   catat ukuran, SHA-256, commit -> SELALU pulihkan assets/models (git checkout + git clean) dan
   pastikan git status bersih. Berkas model hasil salinan tidak pernah di-commit.
+  Nama APK: apk_<varian>_v<versi>_<sha>.apk (versi = skema tanpa +sha, mis. 1.3.0-ta). Salinan juga
+  ditaruh di <KeluaranDir>rsip\ (ditolak bila nama sudah ada) dan dicatat di arsip\VERSI.md.
+  SHA commit dihitung saat pohon masih bersih lalu diteruskan ke gradle (-PclavoGitSha), karena
+  assets/models sementara diubah selama build.
   Syarat: pohon kerja git harus bersih di awal (supaya pemulihan tidak menghapus pekerjaan).
 
 .EXAMPLE
@@ -61,7 +65,16 @@ if (-not ($cengkehSha.StartsWith('3263ad49') -and $cengkehSha.EndsWith('704c3f')
 }
 if ($Varian -eq 'B2' -and -not (Test-Path -LiteralPath $arsipV1)) { throw "Tidak ada: $arsipV1" }
 
-$namaApp = "apk_${Varian}_${commitPendek}.apk"
+# versionName dari gradle (skema+sha), dihitung dengan SHA bersih yang sama.
+$infoVersi = & (Join-Path $repo 'gradlew.bat') -q printVersionInfo "-PclavoGitSha=$commitPendek" 2>$null
+$versionName = ($infoVersi | Where-Object { $_ -like 'versionName=*' } | Select-Object -First 1)
+if (-not $versionName) { throw 'Gagal membaca versionName dari gradle (printVersionInfo)' }
+$versionName = $versionName.Substring('versionName='.Length).Trim()
+$versiDasar = $versionName.Split('+')[0]
+$arsipDir = Join-Path $KeluaranDir 'arsip'
+$namaApp = "apk_${Varian}_v${versiDasar}_${commitPendek}.apk"
+$tujuanArsip = Join-Path $arsipDir $namaApp
+if (Test-Path -LiteralPath $tujuanArsip) { throw "Arsip sudah punya $namaApp (tidak menimpa). Commit baru atau pindahkan berkas lama." }
 $namaTes = "apk_tes_${commitPendek}.apk"
 $berhasil = $false
 
@@ -89,7 +102,7 @@ try {
     }
     Get-ChildItem -LiteralPath (Join-Path $repo 'app\build\intermediates\incremental') -Directory -Filter 'package*Debug*' -ErrorAction SilentlyContinue |
         Remove-Item -Recurse -Force
-    & (Join-Path $repo 'gradlew.bat') assembleDebug assembleDebugAndroidTest --console=plain
+    & (Join-Path $repo 'gradlew.bat') assembleDebug assembleDebugAndroidTest "-PclavoGitSha=$commitPendek" --console=plain
     if ($LASTEXITCODE -ne 0) { throw "Gradle gagal (exit $LASTEXITCODE)" }
 
     $apkApp = Join-Path $repo 'app\build\outputs\apk\debug\app-debug.apk'
@@ -97,6 +110,10 @@ try {
     foreach ($p in @($apkApp, $apkTes)) {
         if (-not (Test-Path -LiteralPath $p)) { throw "APK tidak ditemukan: $p" }
     }
+
+    # --- Periksa versi yang masuk ke build ---
+    $bc = Get-Content -LiteralPath (Join-Path $repo 'appuild\generated\sourceuildConfig\debug\com\google\mediapipe\examples\objectdetection\BuildConfig.java') -Raw
+    if ($bc -notmatch [regex]::Escape("VERSION_NAME = `"$versionName`"")) { throw "BuildConfig.VERSION_NAME tidak sama dengan $versionName" }
 
     # --- Periksa isi assets/models di dalam APK ---
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -118,7 +135,18 @@ try {
     $tujuanTes = Join-Path $KeluaranDir $namaTes
     Copy-Item -LiteralPath $apkApp -Destination $tujuanApp -Force
     Copy-Item -LiteralPath $apkTes -Destination $tujuanTes -Force
+    New-Item -ItemType Directory -Force -Path $arsipDir | Out-Null
+    if (Test-Path -LiteralPath $tujuanArsip) { throw "Arsip sudah punya $namaApp (tidak menimpa)" }
+    Copy-Item -LiteralPath $apkApp -Destination $tujuanArsip
     $ukApp = (Get-Item -LiteralPath $tujuanApp).Length; $shaApp = Get-Sha256 $tujuanApp
+    if ((Get-Sha256 $tujuanArsip) -ne $shaApp) { throw 'Salinan arsip tidak identik' }
+    $versiMd = Join-Path $arsipDir 'VERSI.md'
+    if (-not (Test-Path -LiteralPath $versiMd)) {
+        [System.IO.File]::WriteAllText($versiMd, "# Arsip versi APK Clavo$([Environment]::NewLine)$([Environment]::NewLine)| tanggal | versionName | commit | varian | ukuran (byte) | SHA-256 | catatan |$([Environment]::NewLine)|---|---|---|---|---|---|---|$([Environment]::NewLine)", (New-Object System.Text.UTF8Encoding($false)))
+    }
+    $subjek = ((git log -1 --format=%s).Trim()) -replace '\|', '/'
+    $baris = "| $(Get-Date -Format 'yyyy-MM-dd') | $versionName | $commitPendek | $Varian | $ukApp | $shaApp | $subjek |$([Environment]::NewLine)"
+    [System.IO.File]::AppendAllText($versiMd, $baris, (New-Object System.Text.UTF8Encoding($false)))
     $ukTes = (Get-Item -LiteralPath $tujuanTes).Length; $shaTes = Get-Sha256 $tujuanTes
 
     $catatan = Join-Path $KeluaranDir 'apk_commit.txt'
@@ -142,6 +170,7 @@ try {
     [System.IO.File]::AppendAllText($catatan, $entri, (New-Object System.Text.UTF8Encoding($false)))
 
     Write-Host ""
+    Write-Host "arsip: $tujuanArsip"
     Write-Host "$namaApp  $ukApp byte  sha256=$shaApp"
     Write-Host "$namaTes  $ukTes byte  sha256=$shaTes"
     $berhasil = $true
