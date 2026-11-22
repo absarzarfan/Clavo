@@ -80,6 +80,15 @@ try {
     Write-Host "assets/models untuk ${Varian}: $($isiModel -join ', ')"
 
     # --- Bangun ---
+    # Paksa pengemasan APK dari nol. Pengemasan inkremental AGP memakai ulang berkas APK lama dan
+    # dapat meninggalkan ruang mati (byte model dari varian sebelumnya) sehingga ukuran/SHA-256
+    # APK tidak mencerminkan varian ini. Terbukti: A dibangun setelah B2 = 97.079.785 byte
+    # inkremental vs 82.230.457 byte bersih.
+    foreach ($apkLama in @('app\build\outputs\apk\debug\app-debug.apk', 'app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk')) {
+        Remove-Item -LiteralPath (Join-Path $repo $apkLama) -Force -ErrorAction SilentlyContinue
+    }
+    Get-ChildItem -LiteralPath (Join-Path $repo 'app\build\intermediates\incremental') -Directory -Filter 'package*Debug*' -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
     & (Join-Path $repo 'gradlew.bat') assembleDebug assembleDebugAndroidTest --console=plain
     if ($LASTEXITCODE -ne 0) { throw "Gradle gagal (exit $LASTEXITCODE)" }
 
@@ -93,6 +102,10 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($apkApp)
     try {
+        # Ruang mati: ukuran berkas dikurangi jumlah isi entri. APK bersih ~0,4 MB (header zip).
+        $jumlahIsi = ($zip.Entries | Measure-Object -Property CompressedLength -Sum).Sum
+        $ruangMati = (Get-Item -LiteralPath $apkApp).Length - $jumlahIsi
+        if ($ruangMati -gt 2MB) { throw "APK mengandung ruang mati $ruangMati byte (pengemasan inkremental); ukuran tidak sah" }
         $didalam = @($zip.Entries | Where-Object { $_.FullName -like 'assets/models/*.tflite' } |
             ForEach-Object { $_.Name } | Sort-Object)
     } finally { $zip.Dispose() }
