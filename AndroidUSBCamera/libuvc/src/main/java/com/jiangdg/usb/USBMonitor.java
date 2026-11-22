@@ -38,6 +38,7 @@ import android.hardware.usb.UsbManager;
 import android.os.Build;
 import android.os.Handler;
 import android.text.TextUtils;
+import android.util.Log; // Modified 2026-11-22 by Absar Rakha Zarfan
 import android.util.SparseArray;
 
 import androidx.annotation.RequiresApi;
@@ -576,31 +577,37 @@ public final class USBMonitor {
 		@Override
 		public void run() {
 			if (destroyed) return;
-			final List<UsbDevice> devices = getDeviceList();
-			final int n = devices.size();
-			final int hasPermissionCounts;
-			final int m;
-			synchronized (mHasPermissions) {
-				hasPermissionCounts = mHasPermissions.size();
-				mHasPermissions.clear();
-				for (final UsbDevice device: devices) {
-					hasPermission(device);
+			// Modified 2026-11-22 by Absar Rakha Zarfan: a runtime exception here must not kill the
+			// process nor stop the periodic check; log it and carry on to the next round.
+			try {
+				final List<UsbDevice> devices = getDeviceList();
+				final int n = devices.size();
+				final int hasPermissionCounts;
+				final int m;
+				synchronized (mHasPermissions) {
+					hasPermissionCounts = mHasPermissions.size();
+					mHasPermissions.clear();
+					for (final UsbDevice device: devices) {
+						hasPermission(device);
+					}
+					m = mHasPermissions.size();
 				}
-				m = mHasPermissions.size();
-			}
-			if ((n > mDeviceCounts) || (m > hasPermissionCounts)) {
-				mDeviceCounts = n;
-				if (mOnDeviceConnectListener != null) {
-					for (int i = 0; i < n; i++) {
-						final UsbDevice device = devices.get(i);
-						mAsyncHandler.post(new Runnable() {
-							@Override
-							public void run() {
-								mOnDeviceConnectListener.onAttach(device);
-							}
-						});
+				if ((n > mDeviceCounts) || (m > hasPermissionCounts)) {
+					mDeviceCounts = n;
+					if (mOnDeviceConnectListener != null) {
+						for (int i = 0; i < n; i++) {
+							final UsbDevice device = devices.get(i);
+							mAsyncHandler.post(guarded("device-check-attach", device, new Runnable() {
+								@Override
+								public void run() {
+									mOnDeviceConnectListener.onAttach(device);
+								}
+							}));
+						}
 					}
 				}
+			} catch (final RuntimeException e) {
+				logUsbException("device-check", null, e);
 			}
 			mAsyncHandler.postDelayed(this, 2000);	// confirm every 2 seconds
 		}
@@ -630,9 +637,28 @@ public final class USBMonitor {
 			if (DEBUG) XLogWrapper.v(TAG, "processConnect:device=" + device.getDeviceName());
 			UsbControlBlock ctrlBlock;
 			final boolean createNew;
+			// Modified 2026-11-22 by Absar Rakha Zarfan: this runs later than the request, so the device may
+			// have lost its permission or been unplugged meanwhile. Check first and take the cancel path.
 			ctrlBlock = mCtrlBlocks.get(device);
 			if (ctrlBlock == null) {
-				ctrlBlock = new UsbControlBlock(USBMonitor.this, device);
+				final String skip = connectSkipReason(device);
+				if (skip != null) {
+					Log.w(CLAVO_TAG, "decision-connect-skipped reason=" + skip + " device=" + device.getDeviceName()
+							+ " thread=" + Thread.currentThread().getName());
+					cancelConnect(device);
+					return;
+				}
+				try {
+					ctrlBlock = new UsbControlBlock(USBMonitor.this, device);
+				} catch (final SecurityException e) {
+					logUsbException("processConnect", device, e);
+					cancelConnect(device);
+					return;
+				} catch (final RuntimeException e) {
+					logUsbException("processConnect", device, e);
+					cancelConnect(device);
+					return;
+				}
 				mCtrlBlocks.put(device, ctrlBlock);
 				createNew = true;
 			} else {
@@ -644,9 +670,74 @@ public final class USBMonitor {
 					mOnDeviceConnectListener.onCancel(device);
 					return;
 				}
-				mOnDeviceConnectListener.onConnect(device, ctrlBlock, createNew);
+				try {
+					mOnDeviceConnectListener.onConnect(device, ctrlBlock, createNew);
+				} catch (final RuntimeException e) {
+					logUsbException("processConnect-onConnect", device, e);
+				}
 			}
 		});
+	}
+
+	/** Modified 2026-11-22 by Absar Rakha Zarfan: tag shared with the app's diagnostic log. */
+	private static final String CLAVO_TAG = "ClavoUSB";
+
+	/**
+	 * Modified 2026-11-22 by Absar Rakha Zarfan
+	 * @return null if the device may be opened now, else the reason it must be skipped
+	 */
+	private String connectSkipReason(final UsbDevice device) {
+		try {
+			final HashMap<String, UsbDevice> list = mUsbManager.getDeviceList();
+			if (list == null || !list.containsKey(device.getDeviceName())) {
+				return "device-gone";
+			}
+			if (!mUsbManager.hasPermission(device)) {
+				return "no-permission";
+			}
+		} catch (final RuntimeException e) {
+			logUsbException("connect-precheck", device, e);
+			return "device-gone";
+		}
+		return null;
+	}
+
+	/** Modified 2026-11-22 by Absar Rakha Zarfan: cancel path for a connect that cannot proceed. */
+	private void cancelConnect(final UsbDevice device) {
+		updatePermission(device, false);
+		if (mOnDeviceConnectListener != null) {
+			try {
+				mOnDeviceConnectListener.onCancel(device);
+			} catch (final RuntimeException e) {
+				logUsbException("cancelConnect-onCancel", device, e);
+			}
+		}
+	}
+
+	/** Modified 2026-11-22 by Absar Rakha Zarfan: log an exception that was caught on the USBMonitor thread. */
+	private static void logUsbException(final String where, final UsbDevice device, final RuntimeException e) {
+		String dev = "null";
+		try {
+			if (device != null) dev = device.getDeviceName();
+		} catch (final RuntimeException ignore) {
+		}
+		Log.e(CLAVO_TAG, (e instanceof SecurityException ? "usb-security-exception" : "usb-runtime-exception")
+				+ " where=" + where + " device=" + dev + " thread=" + Thread.currentThread().getName()
+				+ " " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+	}
+
+	/** Modified 2026-11-22 by Absar Rakha Zarfan: run a task on the USBMonitor thread without letting a runtime exception kill the process. */
+	private static Runnable guarded(final String where, final UsbDevice device, final Runnable task) {
+		return new Runnable() {
+			@Override
+			public void run() {
+				try {
+					task.run();
+				} catch (final RuntimeException e) {
+					logUsbException(where, device, e);
+				}
+			}
+		};
 	}
 
 	private void processCancel(final UsbDevice device) {
@@ -654,12 +745,12 @@ public final class USBMonitor {
 		if (DEBUG) XLogWrapper.v(TAG, "processCancel:");
 		updatePermission(device, false);
 		if (mOnDeviceConnectListener != null) {
-			mAsyncHandler.post(new Runnable() {
+			mAsyncHandler.post(guarded("processCancel", device, new Runnable() {
 				@Override
 				public void run() {
 					mOnDeviceConnectListener.onCancel(device);
 				}
-			});
+			}));
 		}
 	}
 
@@ -667,12 +758,12 @@ public final class USBMonitor {
 		if (destroyed) return;
 		if (DEBUG) XLogWrapper.v(TAG, "processAttach:");
 		if (mOnDeviceConnectListener != null) {
-			mAsyncHandler.post(new Runnable() {
+			mAsyncHandler.post(guarded("processAttach", device, new Runnable() {
 				@Override
 				public void run() {
 					mOnDeviceConnectListener.onAttach(device);
 				}
-			});
+			}));
 		}
 	}
 
@@ -680,12 +771,12 @@ public final class USBMonitor {
 		if (destroyed) return;
 		if (DEBUG) XLogWrapper.v(TAG, "processDettach:");
 		if (mOnDeviceConnectListener != null) {
-			mAsyncHandler.post(new Runnable() {
+			mAsyncHandler.post(guarded("processDettach", device, new Runnable() {
 				@Override
 				public void run() {
 					mOnDeviceConnectListener.onDetach(device);
 				}
-			});
+			}));
 		}
 	}
 
@@ -968,16 +1059,32 @@ public final class USBMonitor {
 			if (BuildCheck.isLollipop()) {
 				info.manufacturer = device.getManufacturerName();
 				info.product = device.getProductName();
-				info.serial = device.getSerialNumber();
+				// Modified 2026-11-22 by Absar Rakha Zarfan: getSerialNumber throws SecurityException
+				// when the permission was lost or the device is gone; use a null serial then.
+				try {
+					info.serial = device.getSerialNumber();
+				} catch (final SecurityException e) {
+					info.serial = null;
+					logUsbException("updateDeviceInfo-serial", device, e);
+				}
 			}
 			if (BuildCheck.isMarshmallow()) {
 				info.usb_version = device.getVersion();
 			}
-			if ((manager != null) && manager.hasPermission(device)) {
-				final UsbDeviceConnection connection = manager.openDevice(device);
-				if(connection == null) {
-					return null;
+			// Modified 2026-11-22 by Absar Rakha Zarfan: permission can vanish between the check and the open
+			UsbDeviceConnection connection = null;
+			try {
+				if ((manager != null) && manager.hasPermission(device)) {
+					connection = manager.openDevice(device);
+					if (connection == null) {
+						return null;
+					}
 				}
+			} catch (final SecurityException e) {
+				logUsbException("updateDeviceInfo-open", device, e);
+				connection = null;
+			}
+			if (connection != null) {
 				final byte[] desc = connection.getRawDescriptors();
 
 				if (TextUtils.isEmpty(info.usb_version)) {
