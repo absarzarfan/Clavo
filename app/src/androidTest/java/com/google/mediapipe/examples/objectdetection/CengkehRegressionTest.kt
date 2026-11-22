@@ -15,6 +15,11 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
+ * WARNING: this test is NOT meaningful and must NOT be used as evidence of Cengkeh non-regression.
+ * Its input, androidTest/assets/test_image.jpg, is a photo of pasta, not cloves, so the golden file
+ * only pins the model's output on an irrelevant image. For non-regression use CengkehOutputDumpTest
+ * + tools/bandingkan_cengkeh.ps1 (real Cengkeh images pushed with adb; see tools/README_evaluasi.md).
+ *
  * Golden-file regression for the Cengkeh model on the fixed test image.
  *
  * Golden file: androidTest/assets/cengkeh_golden.txt, one line per detection:
