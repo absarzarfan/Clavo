@@ -11,7 +11,7 @@
   catat ukuran, SHA-256, commit -> SELALU pulihkan assets/models (git checkout + git clean) dan
   pastikan git status bersih. Berkas model hasil salinan tidak pernah di-commit.
   Nama APK: apk_<varian>_v<versi>_<sha>.apk (versi = skema tanpa +sha, mis. 1.3.0-ta). Salinan juga
-  ditaruh di <KeluaranDir>rsip\ (ditolak bila nama sudah ada) dan dicatat di arsip\VERSI.md.
+  ditaruh di <KeluaranDir>\arsip\ (ditolak bila nama sudah ada) dan dicatat di arsip\VERSI.md.
   SHA commit dihitung saat pohon masih bersih lalu diteruskan ke gradle (-PclavoGitSha), karena
   assets/models sementara diubah selama build.
   Syarat: pohon kerja git harus bersih di awal (supaya pemulihan tidak menghapus pekerjaan).
@@ -112,7 +112,7 @@ try {
     }
 
     # --- Periksa versi yang masuk ke build ---
-    $bc = Get-Content -LiteralPath (Join-Path $repo 'appuild\generated\sourceuildConfig\debug\com\google\mediapipe\examples\objectdetection\BuildConfig.java') -Raw
+    $bc = Get-Content -LiteralPath (Join-Path $repo 'app\build\generated\source\buildConfig\debug\com\google\mediapipe\examples\objectdetection\BuildConfig.java') -Raw
     if ($bc -notmatch [regex]::Escape("VERSION_NAME = `"$versionName`"")) { throw "BuildConfig.VERSION_NAME tidak sama dengan $versionName" }
 
     # --- Periksa isi assets/models di dalam APK ---

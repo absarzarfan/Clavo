@@ -31,7 +31,7 @@ $FILES = "/sdcard/Android/data/$PKG/files"
 # 1. Bangun (assets/models diatur sementara lalu dipulihkan otomatis)
 .\tools\bangun_varian.ps1 -Varian $V
 #    hasil: C:\dev\apk\apk_<varian>_v<versi>_<commit>.apk (mis. apk_B1_v1.3.0-ta_<commit>.apk) dan apk_tes_<commit>.apk;
-#    dicatat di apk_commit.txt; salinan APK aplikasi juga di C:\devpkrsip\ + baris di arsip\VERSI.md
+#    dicatat di apk_commit.txt; salinan APK aplikasi juga di C:\dev\apk\arsip\ + baris di arsip\VERSI.md
 $C = (git rev-parse --short HEAD)
 $VER = '1.3.0-ta'   # skema versi di app/build.gradle (clavoVersionScheme)
 
