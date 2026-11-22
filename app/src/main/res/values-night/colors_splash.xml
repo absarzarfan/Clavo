@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="info_overlay_bg">#FF121212</color>
+    <color name="info_overlay_text">#FFF5F5F5</color>
+    <color name="info_overlay_text_secondary">#FFBDBDBD</color>
+</resources>

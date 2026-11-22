@@ -29,6 +29,7 @@ import androidx.navigation.ui.setupWithNavController
 import com.google.mediapipe.examples.objectdetection.databinding.ActivityMainBinding
 import com.google.mediapipe.examples.objectdetection.utils.DetectionPrefs
 import com.google.mediapipe.examples.objectdetection.utils.RotatableScreen
+import com.google.mediapipe.examples.objectdetection.utils.SplashInfo
 import com.google.mediapipe.examples.objectdetection.utils.UsbDebugLog // TEMP-ClavoUSB
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
@@ -74,6 +75,25 @@ class MainActivity : AppCompatActivity() {
             }
         }
         refreshRotateButton()
+        if (savedInstanceState == null) showInfoOverlay()
+    }
+
+    // Version/credit overlay for ~1.5 s right after the system splash (cold start only). Purely a
+    // view on top of the content: it does not touch detection or webcam code and ignores touches.
+    private fun showInfoOverlay() {
+        val root = activityMainBinding.root as android.view.ViewGroup
+        val overlay = layoutInflater.inflate(R.layout.view_info_overlay, root, false)
+        val models = try { assets.list("models")?.toList() ?: emptyList() } catch (e: java.io.IOException) { emptyList() }
+        overlay.findViewById<android.widget.TextView>(R.id.info_line1).text = SplashInfo.line1(BuildConfig.VERSION_NAME)
+        overlay.findViewById<android.widget.TextView>(R.id.info_line2).text =
+            SplashInfo.line2(BuildConfig.GIT_SHA, BuildConfig.BUILD_TYPE, BuildConfig.BUILD_TIME)
+        overlay.findViewById<android.widget.TextView>(R.id.info_line3).text = SplashInfo.line3(models)
+        overlay.findViewById<android.widget.TextView>(R.id.info_footer).text = SplashInfo.FOOTER
+        overlay.elevation = 100f
+        root.addView(overlay)
+        overlay.postDelayed({
+            overlay.animate().alpha(0f).setDuration(250).withEndAction { root.removeView(overlay) }.start()
+        }, 1500)
     }
 
     private fun currentRotationMode(): String? {

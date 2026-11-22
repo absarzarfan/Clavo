@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Info versi/kredit ~1,5 detik setelah splash sistem. Warna mengikuti mode terang/gelap sistem
+     (values-night). Tidak menangkap sentuhan. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/info_overlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/info_overlay_bg"
+    android:clickable="false"
+    android:focusable="false"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <ImageView
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/logo_clavo" />
+
+    <TextView
+        android:id="@+id/info_line1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:textColor="@color/info_overlay_text"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/info_line2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:textColor="@color/info_overlay_text_secondary"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/info_line3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center"
+        android:textColor="@color/info_overlay_text_secondary"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/info_footer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:gravity="center"
+        android:textColor="@color/info_overlay_text_secondary"
+        android:textSize="12sp" />
+</LinearLayout>

@@ -94,6 +94,14 @@ object ModelRepository {
         return titleCase(base)
     }
 
+    /** Short label for the splash: "efficientdet_lite2_cengkeh_V2.tflite" -> "Cengkeh v2". */
+    fun shortNameFor(fileName: String): String {
+        val base = fileName.removeSuffix(MODEL_EXTENSION).removeSuffix(MODEL_EXTENSION.uppercase())
+        val match = NAME_PATTERN.matchEntire(base) ?: return titleCase(base)
+        val (_, name, version) = match.destructured
+        return listOf(titleCase(name), version.lowercase(Locale.ROOT)).filter { it.isNotEmpty() }.joinToString(" ")
+    }
+
     private fun titleCase(raw: String): String =
         raw.replace('_', ' ').replace('-', ' ').trim()
             .split(' ')
