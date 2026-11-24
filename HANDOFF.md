@@ -49,6 +49,8 @@ Keterbatasan:
 - Gambar uji berasal dari data yang dipakai melatih Cengkeh V2 (bukan data tak terlihat) dan diubah ke 640x640 dengan peregangan (stretch); hasilnya menguji non-regresi (keluaran identik), bukan akurasi.
 - Enam putaran latensi; selisih kecil tidak dapat disimpulkan.
 
+Alat uji: fungsi UjiVarian, PutaranLatensi, SalinGambarCengkeh, dan UjiOverlay ada di tools/alat_uji_clavo.ps1 (salinan dokumentasi; ketik IP:port penuh saat memakai Sambung, karena alamat bawaan sudah diganti placeholder).
+
 Lokasi bukti: bukti mentah di luar Git, C:\dev\uji\bukti_evaluasi_20261124_2153.zip (SHA-256 48EF823D8495E15D76043EB8D0335B7D687EA5C5973369361426C22C9C3D9075). APK: C:\dev\apk.
 
 ## HASIL EVALUASI
