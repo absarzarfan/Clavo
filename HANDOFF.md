@@ -76,7 +76,9 @@ Lokasi bukti: bukti mentah di luar Git, C:\dev\uji\bukti_evaluasi_20261124_2153.
 - Gambar Batam dipindah ke PC lewat USB atau Drive, tidak lewat Git.
 
 ## UJI LAPANGAN
-- Pakai APK varian B2 (Cengkeh + v1 + v2) agar v1 dan v2 bisa dibandingkan lewat spinner. APK: C:\dev\apk_B2_cengkeh_v1_v2.apk di PC (bangun ulang di laptop dari commit ini bila perlu).
+- Pakai APK varian B2 (Cengkeh + v1 + v2) agar v1 dan v2 bisa dibandingkan lewat spinner. APK: apk_B2_v1.3.0-ta_771e3d8.apk di C:\dev\apk\arsip. Nama terbaru selalu dilihat di C:\dev\apk\arsip\VERSI.md (daftar versi, ukuran, SHA-256); bangun ulang dari commit bila perlu.
+- Lingkup: aplikasi untuk warga yang memiliki pohon mangga di rumah, bukan hanya petani atau pemilik kebun. Sumber utama gambar uji lapangan Batam adalah pohon mangga di pekarangan rumah warga di beberapa lokasi; kebun narasumber di Barelang hanya pendukung.
+- Catatan pengambilan gambar: lokasi dicatat dengan kode tanpa alamat; tidak ada orang atau wajah di bingkai; wajib izin pemilik pohon; catat tanggal, jam, cuaca, varietas, jarak, dan kategori bertumpuk (buah saling menutupi).
 
 ## DATA
 - v1/v2 dilatih dari dataset OnieU (CC BY 4.0) lewat fork Roboflow k52fw versi 1: 1.533 gambar (1.073/307/153), tanpa augmentasi tambahan.
@@ -84,7 +86,7 @@ Lokasi bukti: bukti mentah di luar Git, C:\dev\uji\bukti_evaluasi_20261124_2153.
 
 ## SISA PEKERJAAN (butuh perangkat)
 1. Uji webcam dan HP: posisi kotak di 4 rotasi (90 derajat), slider threshold, status webcam saat cabut-colok. Catatan: OTG webcam sempat putus-nyambung; belum diuji di HP.
-2. CSV latensi dari perangkat.
+2. SELESAI: latensi dari perangkat sudah diukur; lihat bagian Evaluasi 24 Nov 2026.
 3. CengkehRegressionTest: jalankan sekali di perangkat, salin golden ke androidTest/assets.
 4. TC-01..TC-11.
 5. Minimal 100 gambar Batam (anotasi + kappa).
