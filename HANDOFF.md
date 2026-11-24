@@ -1,4 +1,4 @@
-﻿# Catatan serah-terima Clavo (diperbarui 13 Nov 2026)
+﻿# Catatan serah-terima Clavo (diperbarui 24 Nov 2026)
 
 ## REPO
 - Branch kerja: feature/clavo-mangga-ta. Commit terakhir saat pembaruan: b009989 (label anotator 2, kappa 3 arah, label konsensus, evaluasi tanpa duplikat).
@@ -9,17 +9,47 @@
 - Mangga v1: AP50 0,857. v2: AP 0,609, AP50 0,796, busuk 0,502. v1 dan v2 tidak dapat dibedakan (lihat Kebocoran OnieU); klaim "v2 lebih baik" tidak boleh dipakai. Pilihan v2 di aplikasi bersifat sementara sampai uji lapangan.
 - Evaluasi test split OnieU (153 gambar, 166 objek; skor 0,3, IoU 0,5): macro-F1 v1 0,831, v2 0,854 (angka ini terkontaminasi kebocoran; lihat bagian berikut). Busuk terbaca matang: v1 7/19, v2 5/19.
 - Semua model berinput 448x448.
-- Cengkeh V2: bawaan tim, belum dilatih ulang; dataset asal belum dikonfirmasi.
+- Cengkeh V2: bawaan tim, belum dilatih ulang. Asal dataset terkonfirmasi (menurut pembuat dataset): dilatih dari dataset publik "detect level maturity cloveV" (Roboflow Universe, CC BY 4.0).
 - V3 tim (Manggo, 14 Okt 2025): berlabel sama, bukan hasil latih penulis. Pada test resmi apip (45 gambar) akurasi 43/45 = 95,56%, macro-F1 0,954 (klaim lama direproduksi); pada test OnieU F1 0,758, akurasi 0,801. v1/v2 pada test resmi apip: akurasi 0,600/0,644 (domain gap besar). Belum terbukti: latensi 63,32 ms, "dikumpulkan di Batam", log pelatihan V3.
 
-## UKURAN APK (commit 695d12c, PC, JDK 17, debug)
-| Varian | Isi | Ukuran (byte) |
-|---|---|---|
-| A | Cengkeh saja | 82.179.915 |
-| B1 | Cengkeh + mangga v2 | 89.572.758 |
-| B2 | Cengkeh + mangga v1 + v2 | 96.965.601 |
-- Hash Cengkeh identik di ketiga varian (3263AD49...704C3F). Sumber: training/results/pc/ukuran_apk_695d12c.txt.
-- Angka lama (A 82.163.107 / B 96.948.793, 11 Nov) digantikan tabel di atas.
+## UKURAN APK (commit 771e3d8, tag eval-771e3d8, PC, JDK 17, debug, APK bersih)
+| Varian | Isi | Ukuran (byte) | Selisih terhadap A |
+|---|---|---|---|
+| A | Cengkeh V2 saja | 82.231.779 | - |
+| B1 | A + mangga v2 | 89.624.622 | +8,99% |
+| B2 | B1 + mangga v1 | 97.017.465 | +17,98% |
+- Selisih per model mangga: 7.392.843 byte.
+- USANG: angka commit 695d12c (A 82.179.915 / B1 89.572.758 / B2 96.965.601), commit 1f616a7, dan angka 11 Nov (A 82.163.107 / B 96.948.793) tidak berlaku lagi. Jangan dikutip; training/results/pc/ukuran_apk_695d12c.txt hanya arsip.
+
+## Evaluasi non-regresi, skalabilitas, dan latensi (24 Nov 2026)
+Prosedur ringkas:
+1. Checkout commit 771e3d8 (tag eval-771e3d8). Bangun tiga varian: salin model ke app/src/main/assets/models lalu .\gradlew.bat assembleDebug (tanpa product flavor); A = Cengkeh V2; B1 = A + mangga v2; B2 = B1 + mangga v1 (salinan v1 dari models_archive/ dihapus lagi setelah build, tidak di-commit). Catat ukuran byte, SHA-256, dan commit di C:\dev\apk\apk_commit.txt.
+2. Pasang ketiga APK di HP lewat ADB nirkabel (dijalankan pengguna di PowerShell).
+3. Non-regresi: jalankan Cengkeh V2 pada 143 gambar uji pada tiap varian, simpan keluaran (kelas, skor, kotak), bandingkan A vs B1 dan A vs B2 dengan toleransi skor 0,005 dan kotak 2 px, serta hitung SHA-256 berkas keluaran.
+4. Latensi: CPU, enam putaran seimbang (urutan varian diputar), suhu baterai 35 C atau kurang, 10 pemanasan dan 100 pengukuran per putaran; laporkan rata-rata dari rata-rata putaran dan SD antar putaran.
+5. Overlay versi diperiksa pada mode terang dan gelap lewat tangkapan layar beruntun dan OCR.
+
+Hasil (angka terukur):
+| Uji | A (Cengkeh V2) | B1 (+ mangga v2) | B2 (+ v1 dan v2) |
+|---|---|---|---|
+| Ukuran APK (byte) | 82.231.779 | 89.624.622 (+8,99%) | 97.017.465 (+17,98%) |
+| Regresi keluaran Cengkeh V2 vs A (143 gambar) | - | 143 lulus, 0 gagal | 143 lulus, 0 gagal |
+| Latensi Cengkeh V2, CPU (ms, rata-rata; SD antar putaran) | 131,0; 3,3 | 133,9; 5,0 | 133,9; 5,2 |
+| Latensi mangga v1 (ms) | - | - | 133,2; 4,0 |
+| Latensi mangga v2 (ms) | - | 134,4; 6,2 | 135,8; 2,4 |
+- Regresi: 389 deteksi; SHA-256 berkas keluaran identik di ketiga varian (6FB6086A...C322D5). Gambar: 143 gambar 640x640 dari dataset publik detect level maturity cloveV (Roboflow Universe, CC BY 4.0).
+- Latensi Cengkeh terhadap A: +2,9 ms (+2,2%) untuk B1 dan B2; belum dapat dibedakan dari derau (SD antar putaran 3-5 ms).
+- GPU gagal diinisialisasi (ToTensorConverter: input data size does not match expected size), sehingga hanya CPU yang diukur.
+- Overlay versi (versi, commit, jenis build, daftar model, kredit) terverifikasi pada mode terang dan gelap.
+
+Keterbatasan:
+- Satu HP (Xiaomi 22101316G, Android 14, HyperOS); belum ada perangkat lain.
+- Build debug, bukan release; ukuran dan latensi dapat berbeda pada release.
+- CPU saja; latensi GPU tidak terukur.
+- Gambar uji berasal dari data yang dipakai melatih Cengkeh V2 (bukan data tak terlihat) dan diubah ke 640x640 dengan peregangan (stretch); hasilnya menguji non-regresi (keluaran identik), bukan akurasi.
+- Enam putaran latensi; selisih kecil tidak dapat disimpulkan.
+
+Lokasi bukti: bukti mentah di luar Git, C:\dev\uji\bukti_evaluasi_20261124_2153.zip (SHA-256 48EF823D8495E15D76043EB8D0335B7D687EA5C5973369361426C22C9C3D9075). APK: C:\dev\apk.
 
 ## HASIL EVALUASI
 - Laptop: training/results. PC: training/results/pc (v1/v2 identik dengan laptop).
